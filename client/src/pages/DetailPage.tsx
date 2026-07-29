@@ -49,10 +49,17 @@ export default function DetailPage() {
         })
 
         if (source === 'anilist' && id) {
-          fetchSimilar(id).then(setSimilar).catch(() => {})
+          setTimeout(() => {
+            fetchSimilar(id).then(setSimilar).catch(() => {})
+          }, 600)
         }
 
-        fetchAISummary(data.title, mode).then((s) => setAiSummary(s.summary)).catch(() => {})
+        const desc = data.description?.replace(/<[^>]*>/g, '').trim()
+        if (!desc && data.title) {
+          setTimeout(() => {
+            fetchAISummary(data.title, mode).then((s) => setAiSummary(s.summary)).catch(() => {})
+          }, 1200)
+        }
       })
       .catch((e) => setError(e.message || 'Failed to load'))
       .finally(() => setLoading(false))

@@ -29,16 +29,37 @@ import { aiChat, getAIRecommendations, getSimilarTitles, getAISummary } from './
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const REQUEST_TIMEOUT_MS = 40000;
 
 app.use(cors());
 app.use(express.json());
+
+app.use((req, res, next) => {
+  res.setTimeout(REQUEST_TIMEOUT_MS, () => {
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Request timed out — try again' });
+    }
+  });
+  next();
+});
+
+function handleApiError(res, err) {
+  const msg = err.message || 'Server error';
+  if (/rate.?limit|429|too many/i.test(msg)) {
+    return res.status(429).json({ error: 'Too many requests — wait a moment and retry' });
+  }
+  if (/timed out/i.test(msg)) {
+    return res.status(504).json({ error: msg });
+  }
+  return res.status(500).json({ error: msg });
+}
 
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     name: 'NebulaStream API',
-    version: '3.0',
-    features: ['streaming', 'download', 'fallback', 'ai'],
+    version: '4.1',
+    features: ['streaming', 'download', 'fallback', 'ai', 'cache', 'ratelimit'],
   });
 });
 
@@ -53,7 +74,7 @@ app.get('/api/discover', async (req, res) => {
     const shuffled = data.sort(() => Math.random() - 0.5).slice(0, limit);
     res.json(shuffled);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -78,7 +99,7 @@ app.get('/api/trending', async (req, res) => {
     else data = await getTrendingManga(limit);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -94,7 +115,7 @@ app.get('/api/search', async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -103,7 +124,7 @@ app.get('/api/manga/:source/:id', async (req, res) => {
     const data = await getMangaInfo(req.params.source, req.params.id);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -123,7 +144,7 @@ app.get('/api/manga/:source/:id/chapter/:chapterId', async (req, res) => {
     }
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -132,7 +153,7 @@ app.get('/api/anime/:source/:id', async (req, res) => {
     const data = await getAnimeInfo(req.params.source, req.params.id);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -145,7 +166,7 @@ app.get('/api/anime/:source/watch/:episodeId', async (req, res) => {
     });
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -154,7 +175,7 @@ app.get('/api/series/:source/:id', async (req, res) => {
     const data = await getSeriesInfo(req.params.source, req.params.id);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -167,7 +188,7 @@ app.get('/api/series/:source/watch/:episodeId', async (req, res) => {
     });
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -178,7 +199,7 @@ app.get('/api/resolve/sources', async (req, res) => {
     const sources = await findAlternateSources(mode, title);
     res.json(sources);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -189,7 +210,7 @@ app.post('/api/ai/chat', async (req, res) => {
     const response = await aiChat(message, { mode, history, lastTitle });
     res.json(response);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -200,7 +221,7 @@ app.get('/api/ai/recommend', async (req, res) => {
     const data = await getAIRecommendations(history, mode);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -209,7 +230,7 @@ app.get('/api/ai/similar/:id', async (req, res) => {
     const data = await getSimilarTitles(req.params.id);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -220,7 +241,7 @@ app.get('/api/ai/summary', async (req, res) => {
     const data = await getAISummary(title, mode);
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleApiError(res, err);
   }
 });
 
@@ -233,7 +254,7 @@ app.get('/api/download/manga/:source/:id/chapter/:chapterId', async (req, res) =
       res
     );
   } catch (err) {
-    if (!res.headersSent) res.status(500).json({ error: err.message });
+    if (!res.headersSent) handleApiError(res, err);
   }
 });
 
@@ -243,7 +264,7 @@ app.get('/api/proxy', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'url required' });
     await proxyStream(decodeURIComponent(url), res, download === '1');
   } catch (err) {
-    if (!res.headersSent) res.status(500).json({ error: err.message });
+    if (!res.headersSent) handleApiError(res, err);
   }
 });
 

@@ -7,7 +7,15 @@ export function withTimeout(promise, ms = 10000) {
   ]);
 }
 
-export async function withFallback(providers, fn, label = 'operation', timeoutMs = 12000) {
+export function timeBudget(ms = 25000) {
+  const deadline = Date.now() + ms;
+  return {
+    expired: () => Date.now() >= deadline,
+    remaining: () => Math.max(0, deadline - Date.now()),
+  };
+}
+
+export async function withFallback(providers, fn, label = 'operation', timeoutMs = 8000) {
   const errors = [];
   for (const provider of providers) {
     try {
@@ -27,20 +35,26 @@ export async function withFallback(providers, fn, label = 'operation', timeoutMs
   );
 }
 
-export async function tryAllParallel(providers, fn, limit = 24) {
-  const results = await Promise.allSettled(
-    providers.map((p) => withTimeout(fn(p), 15000).catch(() => []))
-  );
-  const merged = results
-    .filter((r) => r.status === 'fulfilled')
-    .flatMap((r) => (Array.isArray(r.value) ? r.value : []));
+export async function mergeResultsConcurrent(factories, limit = 24, concurrency = 2) {
+  const merged = [];
   const seen = new Set();
-  return merged.filter((item) => {
-    const key = item.title?.toLowerCase()?.trim();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, limit);
+
+  for (let i = 0; i < factories.length; i += concurrency) {
+    const batch = factories.slice(i, i + concurrency);
+    const results = await Promise.allSettled(batch.map((fn) => fn()));
+    for (const r of results) {
+      if (r.status !== 'fulfilled') continue;
+      const items = Array.isArray(r.value) ? r.value : [];
+      for (const item of items) {
+        const key = item.title?.toLowerCase()?.trim();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        merged.push(item);
+        if (merged.length >= limit) return merged;
+      }
+    }
+  }
+  return merged;
 }
 
 export async function mergeResults(tasks, limit = 24) {
@@ -55,6 +69,18 @@ export async function mergeResults(tasks, limit = 24) {
     seen.add(key);
     return true;
   }).slice(0, limit);
+}
+
+export async function runPool(items, fn, concurrency = 2) {
+  const results = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(batch.map((item) => fn(item)));
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && r.value != null) results.push(r.value);
+    }
+  }
+  return results;
 }
 
 export function safe(fn, fallback = null) {

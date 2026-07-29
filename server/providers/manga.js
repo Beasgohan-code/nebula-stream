@@ -1,6 +1,8 @@
 import { MANGA } from '@consumet/extensions';
-import axios from 'axios';
-import { withFallback, mergeResults } from './fallback.js';
+import { mergeResultsConcurrent } from './fallback.js';
+import { mangadexLimiter, consumetLimiter } from './ratelimit.js';
+import { axiosRetry } from './http.js';
+import { cached, cacheKey } from './cache.js';
 
 const MANGADEX = 'https://api.mangadex.org';
 
@@ -33,35 +35,40 @@ export const MANGA_SOURCES = [
     .map(([id, p]) => ({ id, name: p.name, color: p.color })),
 ];
 
+async function mdGet(url, params = {}) {
+  return mangadexLimiter.schedule(() =>
+    axiosRetry({ method: 'get', url, params }, { retries: 2, timeout: 10000 })
+  );
+}
+
 async function searchMangaDex(query, limit = 20) {
-  const { data } = await axios.get(`${MANGADEX}/manga`, {
-    params: {
+  return cached(cacheKey('md-search', query, limit), 60000, async () => {
+    const { data } = await mdGet(`${MANGADEX}/manga`, {
       title: query,
       limit,
       'includes[]': ['cover_art'],
       'order[followedCount]': 'desc',
-    },
-    timeout: 12000,
-  });
+    });
 
-  return data.data.map((m) => {
-    const coverRel = m.relationships?.find((r) => r.type === 'cover_art');
-    const title = m.attributes.title.en || Object.values(m.attributes.title)[0] || 'Unknown';
-    return {
-      id: m.id,
-      title,
-      image: coverRel ? `https://uploads.mangadex.org/covers/${m.id}/${coverRel.id}.512.jpg` : null,
-      source: 'mangadex',
-      sourceName: 'MangaDex',
-      type: 'readable',
-    };
+    return data.data.map((m) => {
+      const coverRel = m.relationships?.find((r) => r.type === 'cover_art');
+      const title = m.attributes.title.en || Object.values(m.attributes.title)[0] || 'Unknown';
+      return {
+        id: m.id,
+        title,
+        image: coverRel ? `https://uploads.mangadex.org/covers/${m.id}/${coverRel.id}.512.jpg` : null,
+        source: 'mangadex',
+        sourceName: 'MangaDex',
+        type: 'readable',
+      };
+    });
   });
 }
 
 async function searchMangaProvider(provider, query, limit = 20) {
   const p = getProvider(provider);
   if (!p) return [];
-  const data = await p.instance.search(query);
+  const data = await consumetLimiter.schedule(() => p.instance.search(query));
   return (data.results || []).slice(0, limit).map((m) => ({
     id: m.id,
     title: m.title,
@@ -85,38 +92,42 @@ export async function searchManga(query, source = 'all', limit = 24) {
     return searchMangaDex(query, limit);
   }
 
-  const providerIds = MANGA_FALLBACK_ORDER;
-  const perSource = Math.max(3, Math.ceil(limit / providerIds.length));
-  const tasks = providerIds.map(async (id) => {
-    try {
-      if (id === 'mangadex') return searchMangaDex(query, perSource);
-      return await searchMangaProvider(id, query, perSource);
-    } catch {
-      return [];
-    }
-  });
+  return cached(cacheKey('search-manga', query, limit), 90000, async () => {
+    const md = await searchMangaDex(query, Math.min(limit, 12)).catch(() => []);
+    if (md.length >= 6) return md.slice(0, limit);
 
-  return mergeResults(tasks, limit);
+    const extra = await mergeResultsConcurrent([
+      () => searchMangaProvider('mangakakalot', query, 4).catch(() => []),
+      () => searchMangaProvider('comick', query, 4).catch(() => []),
+    ], limit - md.length, 2);
+
+    const seen = new Set(md.map((i) => i.title?.toLowerCase()));
+    const merged = [...md];
+    for (const item of extra) {
+      const key = item.title?.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+      if (merged.length >= limit) break;
+    }
+    return merged;
+  });
 }
 
 export async function getMangaInfo(source, id) {
   if (source === 'mangadex') {
-    const { data } = await axios.get(`${MANGADEX}/manga/${id}`, {
-      params: { 'includes[]': ['cover_art'] },
-      timeout: 12000,
+    const { data } = await mdGet(`${MANGADEX}/manga/${id}`, {
+      'includes[]': ['cover_art'],
     });
     const m = data.data;
     const coverRel = m.relationships?.find((r) => r.type === 'cover_art');
     const title = m.attributes.title.en || Object.values(m.attributes.title)[0];
     const cover = coverRel ? `https://uploads.mangadex.org/covers/${id}/${coverRel.id}.512.jpg` : null;
 
-    const { data: chapters } = await axios.get(`${MANGADEX}/manga/${id}/feed`, {
-      params: {
-        limit: 500,
-        'translatedLanguage[]': ['en'],
-        'order[chapter]': 'asc',
-      },
-      timeout: 12000,
+    const { data: chapters } = await mdGet(`${MANGADEX}/manga/${id}/feed`, {
+      limit: 500,
+      'translatedLanguage[]': ['en'],
+      'order[chapter]': 'asc',
     });
 
     return {
@@ -141,7 +152,7 @@ export async function getMangaInfo(source, id) {
 
   const p = getProvider(source);
   if (!p) throw new Error('Unknown manga source');
-  const info = await p.instance.fetchMangaInfo(id);
+  const info = await consumetLimiter.schedule(() => p.instance.fetchMangaInfo(id));
   return {
     id: info.id || id,
     title: info.title,
@@ -162,11 +173,11 @@ export async function getMangaInfo(source, id) {
 
 export async function getMangaChapter(source, mangaId, chapterId) {
   if (source === 'mangadex') {
-    const { data: chData } = await axios.get(`${MANGADEX}/chapter/${chapterId}`, { timeout: 12000 });
+    const { data: chData } = await mdGet(`${MANGADEX}/chapter/${chapterId}`);
     const attrs = chData.data?.attributes;
     if (attrs?.externalUrl) return { externalUrl: attrs.externalUrl, pages: [] };
 
-    const { data } = await axios.get(`${MANGADEX}/at-home/server/${chapterId}`, { timeout: 12000 });
+    const { data } = await mdGet(`${MANGADEX}/at-home/server/${chapterId}`);
     if (!data.chapter) return { pages: [], error: 'Chapter not available' };
     const base = data.baseUrl;
     const hash = data.chapter.hash;
@@ -177,35 +188,34 @@ export async function getMangaChapter(source, mangaId, chapterId) {
 
   const p = getProvider(source);
   if (!p) throw new Error('Unknown source');
-  const data = await p.instance.fetchChapterPages(chapterId);
+  const data = await consumetLimiter.schedule(() => p.instance.fetchChapterPages(chapterId));
   return { pages: data || [] };
 }
 
 export async function getTrendingManga(limit = 20) {
-  try {
-    const { data } = await axios.get(`${MANGADEX}/manga`, {
-      params: {
+  return cached(cacheKey('md-trending', limit), 120000, async () => {
+    try {
+      const { data } = await mdGet(`${MANGADEX}/manga`, {
         limit,
         'includes[]': ['cover_art'],
         'order[followedCount]': 'desc',
         'availableTranslatedLanguage[]': ['en'],
-      },
-      timeout: 12000,
-    });
-    return data.data.map((m) => {
-      const coverRel = m.relationships?.find((r) => r.type === 'cover_art');
-      const title = m.attributes.title.en || Object.values(m.attributes.title)[0];
-      return {
-        id: m.id,
-        title,
-        image: coverRel ? `https://uploads.mangadex.org/covers/${m.id}/${coverRel.id}.512.jpg` : null,
-        source: 'mangadex',
-        sourceName: 'MangaDex',
-      };
-    });
-  } catch {
-    return [];
-  }
+      });
+      return data.data.map((m) => {
+        const coverRel = m.relationships?.find((r) => r.type === 'cover_art');
+        const title = m.attributes.title.en || Object.values(m.attributes.title)[0];
+        return {
+          id: m.id,
+          title,
+          image: coverRel ? `https://uploads.mangadex.org/covers/${m.id}/${coverRel.id}.512.jpg` : null,
+          source: 'mangadex',
+          sourceName: 'MangaDex',
+        };
+      });
+    } catch {
+      return [];
+    }
+  });
 }
 
 export { MANGA_FALLBACK_ORDER };

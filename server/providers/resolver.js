@@ -8,23 +8,30 @@ import {
   ANIME_ORDER,
   MOVIE_ORDER,
 } from './stream.js';
-import { withFallback, withTimeout, titleMatch } from './fallback.js';
+import { withTimeout, titleMatch, runPool } from './fallback.js';
 
-export async function findStreamSources(mode, title, episodeNum, exclude = []) {
-  const providers = (mode === 'series' ? MOVIE_ORDER : ANIME_ORDER).filter(
+const ANIME_RESOLVE_ORDER = ['hianime', 'animepahe', 'animekai', 'kickassanime'];
+const MOVIE_RESOLVE_ORDER = ['flixhq', 'sflix', 'dramacool', 'himovies'];
+
+export async function findStreamSources(mode, title, episodeNum, exclude = [], budget = null) {
+  const providers = (mode === 'series' ? MOVIE_RESOLVE_ORDER : ANIME_RESOLVE_ORDER).filter(
     (p) => !exclude.includes(p)
   );
 
   const errors = [];
   for (const provider of providers) {
+    if (budget?.expired()) break;
+    const timeout = budget ? Math.min(8000, budget.remaining()) : 8000;
+    if (timeout < 2000) break;
+
     try {
       const searchFn = mode === 'series' ? searchMovieStream : searchAnimeStream;
-      const results = await withTimeout(searchFn(provider, title, 5), 12000);
+      const results = await withTimeout(searchFn(provider, title, 5), timeout);
       if (!results?.length) continue;
 
       const match = results.find((r) => titleMatch(r.title, title)) || results[0];
       const infoFn = mode === 'series' ? getMovieStreamInfo : getAnimeStreamInfo;
-      const info = await withTimeout(infoFn(provider, match.id), 12000);
+      const info = await withTimeout(infoFn(provider, match.id), timeout);
       const episodes = info.episodes || [];
       if (!episodes.length) continue;
 
@@ -35,7 +42,7 @@ export async function findStreamSources(mode, title, episodeNum, exclude = []) {
         episodes[0];
 
       const streamFn = mode === 'series' ? getMovieStreamEpisode : getAnimeStreamEpisode;
-      const stream = await withTimeout(streamFn(provider, ep.id), 15000);
+      const stream = await withTimeout(streamFn(provider, ep.id), timeout);
       if (stream.sources?.length) {
         return {
           provider,
@@ -45,6 +52,7 @@ export async function findStreamSources(mode, title, episodeNum, exclude = []) {
           title: info.title,
           ...stream,
           fallbackUsed: true,
+          usedSource: provider,
         };
       }
     } catch (err) {
@@ -56,51 +64,44 @@ export async function findStreamSources(mode, title, episodeNum, exclude = []) {
 }
 
 export async function findAlternateSources(mode, title) {
-  const providers = mode === 'series' ? MOVIE_ORDER : ANIME_ORDER;
+  const providers = (mode === 'series' ? MOVIE_RESOLVE_ORDER : ANIME_RESOLVE_ORDER);
   const searchFn = mode === 'series' ? searchMovieStream : searchAnimeStream;
 
-  const tasks = providers.map(async (provider) => {
-    try {
-      const results = await withTimeout(searchFn(provider, title, 3), 10000);
-      const match = results?.find((r) => titleMatch(r.title, title));
-      if (!match) return null;
-      return {
-        id: match.id,
-        title: match.title,
-        image: match.image,
-        source: provider,
-        sourceName: match.sourceName,
-        type: 'streamable',
-      };
-    } catch {
-      return null;
-    }
-  });
+  const results = await runPool(providers, async (provider) => {
+    const results = await withTimeout(searchFn(provider, title, 3), 8000);
+    const match = results?.find((r) => titleMatch(r.title, title));
+    if (!match) return null;
+    return {
+      id: match.id,
+      title: match.title,
+      image: match.image,
+      source: provider,
+      sourceName: match.sourceName,
+      type: 'streamable',
+    };
+  }, 2);
 
-  const results = await Promise.allSettled(tasks);
-  return results
-    .filter((r) => r.status === 'fulfilled' && r.value)
-    .map((r) => r.value);
+  return results;
 }
 
 export async function resolveMangaChapter(title, chapterNum, exclude = []) {
   const { searchManga, getMangaInfo, getMangaChapter, MANGA_FALLBACK_ORDER } = await import('./manga.js');
-  const providers = MANGA_FALLBACK_ORDER.filter((p) => p !== 'mangadex' && !exclude.includes(p));
+  const providers = MANGA_FALLBACK_ORDER.filter((p) => p !== 'mangadex' && !exclude.includes(p)).slice(0, 4);
 
   for (const provider of providers) {
     try {
-      const results = await withTimeout(searchManga(title, provider, 3), 12000);
+      const results = await withTimeout(searchManga(title, provider, 3), 8000);
       const match = results?.find((r) => titleMatch(r.title, title));
       if (!match) continue;
 
-      const info = await withTimeout(getMangaInfo(provider, match.id), 12000);
+      const info = await withTimeout(getMangaInfo(provider, match.id), 8000);
       const chNum = parseFloat(chapterNum);
       const ch =
         info.chapters?.find((c) => parseFloat(c.number) === chNum) ||
         info.chapters?.[info.chapters.length - 1];
 
       if (!ch) continue;
-      const pages = await withTimeout(getMangaChapter(provider, match.id, ch.id), 15000);
+      const pages = await withTimeout(getMangaChapter(provider, match.id, ch.id), 10000);
       if (pages.pages?.length) {
         return { provider, mangaId: match.id, chapterId: ch.id, ...pages, fallbackUsed: true };
       }

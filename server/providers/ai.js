@@ -2,65 +2,59 @@ import {
   searchAniList,
   getTrendingAniList,
   getAniListInfo,
+  gql,
 } from './anilist.js';
-import axios from 'axios';
-
-const ANILIST = 'https://graphql.anilist.co';
-
-async function gql(query, variables = {}) {
-  const { data } = await axios.post(ANILIST, { query, variables }, {
-    timeout: 12000,
-    headers: { 'Content-Type': 'application/json' },
-  });
-  if (data.errors) throw new Error(data.errors[0]?.message);
-  return data.data;
-}
+import { cached, cacheKey } from './cache.js';
+import { sleep } from './ratelimit.js';
 
 export async function getSimilarTitles(id, limit = 8) {
-  const data = await gql(
-    `query($id: Int) {
-      Media(id: $id) {
-        title { english romaji }
-        recommendations(perPage: ${limit}, sort: RATING_DESC) {
-          nodes {
-            mediaRecommendation {
-              id
-              title { english romaji }
-              coverImage { large }
-              averageScore
-              genres
-              type
+  return cached(cacheKey('similar', id, limit), 120000, async () => {
+    const data = await gql(
+      `query($id: Int) {
+        Media(id: $id) {
+          title { english romaji }
+          recommendations(perPage: ${limit}, sort: RATING_DESC) {
+            nodes {
+              mediaRecommendation {
+                id
+                title { english romaji }
+                coverImage { large }
+                averageScore
+                genres
+                type
+              }
             }
           }
         }
-      }
-    }`,
-    { id: parseInt(id) }
-  );
+      }`,
+      { id: parseInt(id) }
+    );
 
-  return (data.Media?.recommendations?.nodes || [])
-    .map((n) => n.mediaRecommendation)
-    .filter(Boolean)
-    .map((m) => ({
-      id: String(m.id),
-      title: m.title.english || m.title.romaji,
-      image: m.coverImage?.large,
-      source: 'anilist',
-      sourceName: 'AniList',
-      score: m.averageScore ? m.averageScore / 10 : null,
-      genres: m.genres,
-      mode: m.type === 'MANGA' ? 'manga' : 'anime',
-    }));
+    return (data.Media?.recommendations?.nodes || [])
+      .map((n) => n.mediaRecommendation)
+      .filter(Boolean)
+      .map((m) => ({
+        id: String(m.id),
+        title: m.title.english || m.title.romaji,
+        image: m.coverImage?.large,
+        source: 'anilist',
+        sourceName: 'AniList',
+        score: m.averageScore ? m.averageScore / 10 : null,
+        genres: m.genres,
+        mode: m.type === 'MANGA' ? 'manga' : 'anime',
+      }));
+  });
 }
 
 export async function getAIRecommendations(watchHistory = [], mode = 'anime') {
   const genres = new Set();
-  const titles = watchHistory.slice(0, 5).map((h) => h.title).filter(Boolean);
+  const titles = watchHistory.slice(0, 3).map((h) => h.title).filter(Boolean);
 
   for (const title of titles) {
     try {
       const results = await searchAniList(title, 1, mode === 'manga' ? 'MANGA' : 'ANIME');
       results[0]?.genres?.forEach((g) => genres.add(g));
+      await sleep(400);
     } catch {
       // skip
     }
@@ -145,7 +139,7 @@ export async function aiChat(message, context = {}) {
   const results = await searchAniList(
     query,
     8,
-    mode === 'manga' ? 'MANGA' : mode === 'series' ? 'ANIME' : 'ANIME'
+    mode === 'manga' ? 'MANGA' : 'ANIME'
   );
 
   if (results.length) {
@@ -165,12 +159,13 @@ export async function aiChat(message, context = {}) {
 
 export async function getAISummary(title, mode = 'anime') {
   const results = await searchAniList(title, 1, mode === 'manga' ? 'MANGA' : 'ANIME');
-  if (!results[0]) return { summary: 'No information found.' };
+  if (!results[0]) return { summary: '' };
 
   const info = await getAniListInfo(results[0].id, mode === 'manga' ? 'MANGA' : 'ANIME');
   const desc = info.description || '';
-  const short = desc.length > 300 ? desc.slice(0, 300) + '...' : desc;
+  if (!desc) return { summary: '' };
 
+  const short = desc.length > 300 ? desc.slice(0, 300) + '...' : desc;
   const genres = info.genres?.join(', ') || 'Unknown';
   const score = info.score ? `Rated ${info.score}/10` : '';
   const status = info.status || '';

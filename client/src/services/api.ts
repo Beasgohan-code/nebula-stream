@@ -1,30 +1,55 @@
 const API = '/api'
+const DEFAULT_TIMEOUT = 35000
+
+async function apiFetch<T = any>(
+  path: string,
+  opts: RequestInit & { timeout?: number } = {}
+): Promise<T> {
+  const { timeout = DEFAULT_TIMEOUT, ...init } = opts
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const res = await fetch(`${API}${path}`, { ...init, signal: controller.signal })
+    const data = await res.json().catch(() => ({}))
+
+    if (res.status === 429) {
+      throw new Error(data.error || 'Too many requests — wait a moment and try again')
+    }
+    if (!res.ok) {
+      throw new Error(data.error || `Request failed (${res.status})`)
+    }
+    return data as T
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Request timed out — try again')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 export async function fetchSources(mode: string) {
-  const res = await fetch(`${API}/sources?mode=${mode}`)
-  return res.json()
+  return apiFetch(`/sources?mode=${mode}`)
 }
 
 export async function fetchTrending(mode: string, limit = 20) {
-  const res = await fetch(`${API}/trending?mode=${mode}&limit=${limit}`)
-  return res.json()
+  return apiFetch(`/trending?mode=${mode}&limit=${limit}`)
 }
 
 export async function fetchDiscover(mode: string, limit = 12) {
-  const res = await fetch(`${API}/discover?mode=${mode}&limit=${limit}`)
-  return res.json()
+  return apiFetch(`/discover?mode=${mode}&limit=${limit}`)
 }
 
 export async function searchContent(mode: string, q: string, source = 'all', limit = 24) {
-  const res = await fetch(
-    `${API}/search?mode=${mode}&q=${encodeURIComponent(q)}&source=${source}&limit=${limit}`
+  return apiFetch(
+    `/search?mode=${mode}&q=${encodeURIComponent(q)}&source=${source}&limit=${limit}`
   )
-  return res.json()
 }
 
 export async function fetchMangaInfo(source: string, id: string) {
-  const res = await fetch(`${API}/manga/${source}/${id}`)
-  return res.json()
+  return apiFetch(`/manga/${source}/${id}`)
 }
 
 export async function fetchMangaChapter(
@@ -35,13 +60,11 @@ export async function fetchMangaChapter(
   if (opts?.title) params.set('title', opts.title)
   if (opts?.chapter) params.set('chapter', opts.chapter)
   const qs = params.toString() ? `?${params}` : ''
-  const res = await fetch(`${API}/manga/${source}/${id}/chapter/${chapterId}${qs}`)
-  return res.json()
+  return apiFetch(`/manga/${source}/${id}/chapter/${chapterId}${qs}`, { timeout: 45000 })
 }
 
 export async function fetchAnimeInfo(source: string, id: string) {
-  const res = await fetch(`${API}/anime/${source}/${id}`)
-  return res.json()
+  return apiFetch(`/anime/${source}/${id}`)
 }
 
 export async function fetchAnimeEpisode(
@@ -53,13 +76,11 @@ export async function fetchAnimeEpisode(
   if (opts?.ep) params.set('ep', opts.ep)
   if (opts?.exclude) params.set('exclude', opts.exclude)
   const qs = params.toString() ? `?${params}` : ''
-  const res = await fetch(`${API}/anime/${source}/watch/${episodeId}${qs}`)
-  return res.json()
+  return apiFetch(`/anime/${source}/watch/${episodeId}${qs}`, { timeout: 45000 })
 }
 
 export async function fetchSeriesInfo(source: string, id: string) {
-  const res = await fetch(`${API}/series/${source}/${id}`)
-  return res.json()
+  return apiFetch(`/series/${source}/${id}`)
 }
 
 export async function fetchSeriesEpisode(
@@ -71,37 +92,33 @@ export async function fetchSeriesEpisode(
   if (opts?.ep) params.set('ep', opts.ep)
   if (opts?.exclude) params.set('exclude', opts.exclude)
   const qs = params.toString() ? `?${params}` : ''
-  const res = await fetch(`${API}/series/${source}/watch/${episodeId}${qs}`)
-  return res.json()
+  return apiFetch(`/series/${source}/watch/${episodeId}${qs}`, { timeout: 45000 })
 }
 
 export async function fetchAlternateSources(title: string, mode: string) {
-  const res = await fetch(`${API}/resolve/sources?title=${encodeURIComponent(title)}&mode=${mode}`)
-  return res.json()
+  return apiFetch(`/resolve/sources?title=${encodeURIComponent(title)}&mode=${mode}`, { timeout: 40000 })
 }
 
 export async function fetchSimilar(id: string) {
-  const res = await fetch(`${API}/ai/similar/${id}`)
-  return res.json()
+  return apiFetch(`/ai/similar/${id}`)
 }
 
 export async function fetchAISummary(title: string, mode: string) {
-  const res = await fetch(`${API}/ai/summary?title=${encodeURIComponent(title)}&mode=${mode}`)
-  return res.json()
+  return apiFetch(`/ai/summary?title=${encodeURIComponent(title)}&mode=${mode}`)
 }
 
-export async function aiChat(message: string, mode: string, history: any[]) {
-  const res = await fetch(`${API}/ai/chat`, {
+export async function aiChat(message: string, mode: string, history: unknown[]) {
+  return apiFetch('/ai/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, mode, history }),
   })
-  return res.json()
 }
 
-export async function fetchAIRecommend(mode: string, history: any[]) {
-  const res = await fetch(`${API}/ai/recommend?mode=${mode}&history=${encodeURIComponent(JSON.stringify(history))}`)
-  return res.json()
+export async function fetchAIRecommend(mode: string, history: unknown[]) {
+  return apiFetch(
+    `/ai/recommend?mode=${mode}&history=${encodeURIComponent(JSON.stringify(history))}`
+  )
 }
 
 export function getMangaDownloadUrl(source: string, mangaId: string, chapterId: string) {

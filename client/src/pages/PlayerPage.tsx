@@ -82,8 +82,9 @@ export default function PlayerPage() {
       if (data.fallbackUsed) {
         toast(`Switched to ${data.usedSource || data.provider} (auto-fallback)`, 'success')
       }
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Stream failed'
+      setError(msg)
       setTriedSources((prev) => [...new Set([...prev, source, ...exclude])])
     } finally {
       setLoading(false)

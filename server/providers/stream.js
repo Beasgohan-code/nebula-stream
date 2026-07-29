@@ -1,5 +1,6 @@
 import { ANIME, MOVIES } from '@consumet/extensions';
 import { withFallback } from './fallback.js';
+import { consumetLimiter } from './ratelimit.js';
 
 const ANIME_PROVIDERS = {
   hianime: { cls: ANIME.Hianime, name: 'HiAnime', color: '#ef476f' },
@@ -43,10 +44,19 @@ export function getMovieStreamSources() {
   }));
 }
 
+function wrapConsumet(fn) {
+  return consumetLimiter.schedule(fn);
+}
+
 export async function searchAnimeStream(provider, query, limit = 20) {
   const p = getProvider(ANIME_PROVIDERS, provider);
   if (!p) return [];
-  const data = await p.instance.search(query);
+  const data = await wrapConsumet(() =>
+    Promise.race([
+      p.instance.search(query),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+    ])
+  );
   return (data.results || []).slice(0, limit).map((a) => ({
     id: a.id,
     title: a.title,
@@ -69,7 +79,7 @@ export async function searchAnimeStreamFallback(query, limit = 20) {
 export async function getAnimeStreamInfo(provider, id) {
   const p = getProvider(ANIME_PROVIDERS, provider);
   if (!p) throw new Error('Unknown provider');
-  const info = await p.instance.fetchAnimeInfo(id);
+  const info = await wrapConsumet(() => p.instance.fetchAnimeInfo(id));
   return {
     id: info.id || id,
     title: info.title,
@@ -96,9 +106,9 @@ export async function getAnimeStreamEpisode(provider, episodeId, server) {
 
   let data;
   if (server && p.instance.fetchEpisodeSources.length > 1) {
-    data = await p.instance.fetchEpisodeSources(episodeId, server);
+    data = await wrapConsumet(() => p.instance.fetchEpisodeSources(episodeId, server));
   } else {
-    data = await p.instance.fetchEpisodeSources(episodeId);
+    data = await wrapConsumet(() => p.instance.fetchEpisodeSources(episodeId));
   }
 
   return {
@@ -134,7 +144,12 @@ export async function getAnimeStreamEpisodeFallback(episodeId, providers = ANIME
 export async function searchMovieStream(provider, query, limit = 20) {
   const p = getProvider(MOVIE_PROVIDERS, provider);
   if (!p) return [];
-  const data = await p.instance.search(query);
+  const data = await wrapConsumet(() =>
+    Promise.race([
+      p.instance.search(query),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+    ])
+  );
   return (data.results || []).slice(0, limit).map((s) => ({
     id: s.id,
     title: s.title,
@@ -157,7 +172,7 @@ export async function searchMovieStreamFallback(query, limit = 20) {
 export async function getMovieStreamInfo(provider, id) {
   const p = getProvider(MOVIE_PROVIDERS, provider);
   if (!p) throw new Error('Unknown provider');
-  const info = await p.instance.fetchMediaInfo(id);
+  const info = await wrapConsumet(() => p.instance.fetchMediaInfo(id));
   const episodes = info.episodes || info.seasons?.flatMap((s) => s.episodes) || [];
   return {
     id: info.id || id,
@@ -178,7 +193,7 @@ export async function getMovieStreamInfo(provider, id) {
 export async function getMovieStreamEpisode(provider, episodeId) {
   const p = getProvider(MOVIE_PROVIDERS, provider);
   if (!p) throw new Error('Unknown provider');
-  const data = await p.instance.fetchEpisodeSources(episodeId);
+  const data = await wrapConsumet(() => p.instance.fetchEpisodeSources(episodeId));
   return {
     sources: (data.sources || []).map((s) => ({
       url: s.url,
