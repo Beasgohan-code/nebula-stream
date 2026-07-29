@@ -48,8 +48,9 @@ export async function searchContent(mode: string, q: string, source = 'all', lim
   )
 }
 
-export async function fetchMangaInfo(source: string, id: string) {
-  return apiFetch(`/manga/${source}/${id}`)
+export async function fetchMangaInfo(source: string, id: string, title?: string) {
+  const qs = title ? `?title=${encodeURIComponent(title)}` : ''
+  return apiFetch(`/manga/${source}/${id}${qs}`, { timeout: 45000 })
 }
 
 export async function fetchMangaChapter(
@@ -57,14 +58,15 @@ export async function fetchMangaChapter(
   opts?: { title?: string; chapter?: string }
 ) {
   const params = new URLSearchParams()
+  params.set('chapterId', chapterId)
   if (opts?.title) params.set('title', opts.title)
   if (opts?.chapter) params.set('chapter', opts.chapter)
-  const qs = params.toString() ? `?${params}` : ''
-  return apiFetch(`/manga/${source}/${id}/chapter/${chapterId}${qs}`, { timeout: 45000 })
+  return apiFetch(`/manga/${source}/${id}/chapter?${params}`, { timeout: 45000 })
 }
 
-export async function fetchAnimeInfo(source: string, id: string) {
-  return apiFetch(`/anime/${source}/${id}`)
+export async function fetchAnimeInfo(source: string, id: string, title?: string) {
+  const qs = title ? `?title=${encodeURIComponent(title)}` : ''
+  return apiFetch(`/anime/${source}/${id}${qs}`, { timeout: 45000 })
 }
 
 export async function fetchAnimeEpisode(
@@ -79,8 +81,9 @@ export async function fetchAnimeEpisode(
   return apiFetch(`/anime/${source}/watch/${episodeId}${qs}`, { timeout: 45000 })
 }
 
-export async function fetchSeriesInfo(source: string, id: string) {
-  return apiFetch(`/series/${source}/${id}`)
+export async function fetchSeriesInfo(source: string, id: string, title?: string) {
+  const qs = title ? `?title=${encodeURIComponent(title)}` : ''
+  return apiFetch(`/series/${source}/${id}${qs}`, { timeout: 45000 })
 }
 
 export async function fetchSeriesEpisode(
@@ -121,8 +124,14 @@ export async function fetchAIRecommend(mode: string, history: unknown[]) {
   )
 }
 
+export function getImageProxyUrl(url: string, referer?: string) {
+  const params = new URLSearchParams({ url })
+  if (referer) params.set('referer', referer)
+  return `${API}/proxy/image?${params}`
+}
+
 export function getMangaDownloadUrl(source: string, mangaId: string, chapterId: string) {
-  return `${API}/download/manga/${source}/${mangaId}/chapter/${chapterId}`
+  return `${API}/download/manga/${source}/${mangaId}/chapter?chapterId=${encodeURIComponent(chapterId)}`
 }
 
 export function getVideoProxyUrl(url: string, download = false) {

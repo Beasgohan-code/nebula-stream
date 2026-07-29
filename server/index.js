@@ -23,8 +23,8 @@ import {
   getTrendingSeries,
   SERIES_SOURCES,
 } from './providers/series.js';
-import { downloadMangaChapter, proxyStream } from './providers/download.js';
-import { findAlternateSources, resolveMangaChapter } from './providers/resolver.js';
+import { downloadMangaChapter, proxyStream, proxyImage } from './providers/download.js';
+import { findAlternateSources, resolveMangaChapter, resolveDetail } from './providers/resolver.js';
 import { aiChat, getAIRecommendations, getSimilarTitles, getAISummary } from './providers/ai.js';
 
 const app = express();
@@ -58,8 +58,8 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     name: 'NebulaStream API',
-    version: '4.1',
-    features: ['streaming', 'download', 'fallback', 'ai', 'cache', 'ratelimit'],
+    version: '5.0',
+    features: ['streaming', 'download', 'fallback', 'ai', 'cache', 'autoresolve'],
   });
 });
 
@@ -121,6 +121,9 @@ app.get('/api/search', async (req, res) => {
 
 app.get('/api/manga/:source/:id', async (req, res) => {
   try {
+    const title = req.query.title || '';
+    const resolved = await resolveDetail('manga', req.params.source, req.params.id, title);
+    if (resolved) return res.json(resolved);
     const data = await getMangaInfo(req.params.source, req.params.id);
     res.json(data);
   } catch (err) {
@@ -128,14 +131,13 @@ app.get('/api/manga/:source/:id', async (req, res) => {
   }
 });
 
-app.get('/api/manga/:source/:id/chapter/:chapterId', async (req, res) => {
+app.get('/api/manga/:source/:id/chapter', async (req, res) => {
   try {
-    let data = await getMangaChapter(
-      req.params.source,
-      req.params.id,
-      req.params.chapterId
-    );
-    if ((!data.pages?.length || data.error) && req.query.title && req.query.chapter) {
+    const chapterId = req.query.chapterId;
+    if (!chapterId) return res.status(400).json({ error: 'chapterId required' });
+    let data = await getMangaChapter(req.params.source, req.params.id, chapterId);
+    const needsFallback = !data.pages?.length || data.needsFallback || data.externalUrl;
+    if (needsFallback && req.query.title && req.query.chapter) {
       data = await resolveMangaChapter(
         req.query.title,
         req.query.chapter,
@@ -150,6 +152,9 @@ app.get('/api/manga/:source/:id/chapter/:chapterId', async (req, res) => {
 
 app.get('/api/anime/:source/:id', async (req, res) => {
   try {
+    const title = req.query.title || '';
+    const resolved = await resolveDetail('anime', req.params.source, req.params.id, title);
+    if (resolved) return res.json(resolved);
     const data = await getAnimeInfo(req.params.source, req.params.id);
     res.json(data);
   } catch (err) {
@@ -172,6 +177,9 @@ app.get('/api/anime/:source/watch/:episodeId', async (req, res) => {
 
 app.get('/api/series/:source/:id', async (req, res) => {
   try {
+    const title = req.query.title || '';
+    const resolved = await resolveDetail('series', req.params.source, req.params.id, title);
+    if (resolved) return res.json(resolved);
     const data = await getSeriesInfo(req.params.source, req.params.id);
     res.json(data);
   } catch (err) {
@@ -187,6 +195,17 @@ app.get('/api/series/:source/watch/:episodeId', async (req, res) => {
       exclude: req.query.exclude?.split(',') || [],
     });
     res.json(data);
+  } catch (err) {
+    handleApiError(res, err);
+  }
+});
+
+app.get('/api/resolve/detail', async (req, res) => {
+  try {
+    const { mode = 'anime', source, id, title } = req.query;
+    if (!source || !id) return res.status(400).json({ error: 'source and id required' });
+    const data = await resolveDetail(mode, source, id, title || '');
+    res.json(data || { error: 'Could not resolve' });
   } catch (err) {
     handleApiError(res, err);
   }
@@ -245,14 +264,21 @@ app.get('/api/ai/summary', async (req, res) => {
   }
 });
 
-app.get('/api/download/manga/:source/:id/chapter/:chapterId', async (req, res) => {
+app.get('/api/download/manga/:source/:id/chapter', async (req, res) => {
   try {
-    await downloadMangaChapter(
-      req.params.source,
-      req.params.id,
-      req.params.chapterId,
-      res
-    );
+    const chapterId = req.query.chapterId;
+    if (!chapterId) return res.status(400).json({ error: 'chapterId required' });
+    await downloadMangaChapter(req.params.source, req.params.id, chapterId, res);
+  } catch (err) {
+    if (!res.headersSent) handleApiError(res, err);
+  }
+});
+
+app.get('/api/proxy/image', async (req, res) => {
+  try {
+    const { url, referer } = req.query;
+    if (!url) return res.status(400).json({ error: 'url required' });
+    await proxyImage(decodeURIComponent(url), res, referer ? decodeURIComponent(referer) : '');
   } catch (err) {
     if (!res.headersSent) handleApiError(res, err);
   }

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Bookmark, BookmarkCheck, Play, BookOpen,
-  Star, Tag, ChevronRight, RefreshCw, Sparkles, Layers, ListPlus, Share2
+  Star, Tag, ChevronRight, RefreshCw, Sparkles, Layers, ListPlus, Share2, Loader2
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useToast } from '../components/Toast'
@@ -23,12 +23,14 @@ export default function DetailPage() {
   const [similar, setSimilar] = useState<any[]>([])
   const [aiSummary, setAiSummary] = useState('')
   const [loading, setLoading] = useState(true)
+  const [resolving, setResolving] = useState(false)
   const [loadingAlts, setLoadingAlts] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!mode || !source || !id) return
     setLoading(true)
+    setResolving(mode !== 'manga' && source === 'anilist')
     setError('')
     setAlternates([])
     setSimilar([])
@@ -42,16 +44,31 @@ export default function DetailPage() {
     fetcher(source, id)
       .then(async (data) => {
         if (data.error) throw new Error(data.error)
+
+        if (data.resolved && data.resolvedFrom && data.source !== source) {
+          toast(`Found on ${data.sourceName || data.resolvedFrom} — in-app only`, 'success')
+          navigate(`/${mode}/${data.source}/${data.id}?resolved=1`, { replace: true })
+          return
+        }
+
         setInfo(data)
+        setResolving(false)
         addHistory({
-          id, title: data.title, image: data.image,
-          source, mode: mode as any, visitedAt: Date.now(),
+          id: data.id || id, title: data.title, image: data.image,
+          source: data.source || source, mode: mode as any, visitedAt: Date.now(),
         })
 
-        if (source === 'anilist' && id) {
-          setTimeout(() => {
-            fetchSimilar(id).then(setSimilar).catch(() => {})
-          }, 600)
+        const hasReadable = mode === 'manga'
+          ? (data.chapters || []).some((c: any) => c.readable !== false)
+          : (data.episodes || []).length > 0 && !data.episodes[0]?.url
+
+        if (mode !== 'manga' && !hasReadable && data.title) {
+          setResolving(true)
+          findStreamsFor(data.title)
+        }
+
+        if ((source === 'anilist' || data.source === 'anilist') && id) {
+          setTimeout(() => fetchSimilar(id).then(setSimilar).catch(() => {}), 600)
         }
 
         const desc = data.description?.replace(/<[^>]*>/g, '').trim()
@@ -61,23 +78,32 @@ export default function DetailPage() {
           }, 1200)
         }
       })
-      .catch((e) => setError(e.message || 'Failed to load'))
+      .catch((e) => { setError(e.message || 'Failed to load'); setResolving(false) })
       .finally(() => setLoading(false))
   }, [mode, source, id])
 
-  const findStreams = async () => {
-    if (!info?.title) return
+  const findStreamsFor = async (title: string) => {
     setLoadingAlts(true)
     try {
-      const alts = await fetchAlternateSources(info.title, mode || 'anime')
+      const alts = await fetchAlternateSources(title, mode || 'anime')
       setAlternates(alts)
-      if (alts.length) toast(`Found ${alts.length} streaming sources!`, 'success')
-      else toast('No streams found — try again later', 'error')
+      if (alts.length) {
+        toast(`Found ${alts.length} in-app sources`, 'success')
+        navigate(`/${mode}/${alts[0].source}/${alts[0].id}`, { replace: true })
+      } else {
+        toast('No in-app stream found — try another title', 'error')
+      }
     } catch {
-      toast('Could not find alternate sources', 'error')
+      toast('Could not find sources', 'error')
     } finally {
       setLoadingAlts(false)
+      setResolving(false)
     }
+  }
+
+  const findStreams = async () => {
+    if (!info?.title) return
+    await findStreamsFor(info.title)
   }
 
   const bookmarked = id && source ? isBookmarked(id, source) : false
@@ -97,12 +123,8 @@ export default function DetailPage() {
 
   const shareTitle = async () => {
     const text = `Check out ${info?.title} on NebulaStream!`
-    if (navigator.share) {
-      await navigator.share({ title: info?.title, text })
-    } else {
-      await navigator.clipboard.writeText(text)
-      toast('Link copied!', 'success')
-    }
+    await navigator.clipboard.writeText(text)
+    toast('Copied to clipboard!', 'success')
   }
 
   const playEpisode = (item: any, epSource: string, epId: string, index: number, orderedList: any[]) => {
@@ -116,21 +138,23 @@ export default function DetailPage() {
     })
     if (prev) navParams.set('prev', prev.id)
     if (next) navParams.set('next', next.id)
+
     if (mode === 'manga') {
-      if (item.externalUrl) window.open(item.externalUrl, '_blank')
-      else navigate(`/read/${epSource}/${id}/${item.id}?${navParams}`)
-    } else if (item.url) {
-      window.open(item.url, '_blank')
+      const src = item.source || epSource
+      navParams.set('chapterId', item.id)
+      navigate(`/read/${src}/${info.id}?${navParams}`)
     } else {
-      navigate(`/watch/${mode}/${epSource}/${epId}?${navParams}`)
+      const src = info.source || epSource
+      navigate(`/watch/${mode}/${src}/${epId}?${navParams}`)
     }
   }
 
-  if (loading) {
+  if (loading || resolving) {
     return (
-      <div className="fade-in pt-4">
-        <div className="glass-card shimmer" style={{ height: 300, marginBottom: 20 }} />
-        <div className="glass-card shimmer" style={{ height: 200 }} />
+      <div className="text-center py-20 fade-in">
+        <Loader2 size={32} className="mx-auto mb-4 animate-spin glow-text-cyan" />
+        <p className="glow-text-cyan">{resolving ? 'Finding in-app source...' : 'Loading...'}</p>
+        <p className="text-xs opacity-50 mt-2">No external links — everything stays inside NebulaStream</p>
       </div>
     )
   }
@@ -148,9 +172,12 @@ export default function DetailPage() {
 
   const chapters = info.chapters || []
   const episodes = info.episodes || []
-  const list = chapters.length ? chapters : (Array.isArray(episodes) ? episodes : [])
-  const orderedList = mode === 'manga' ? [...list].reverse() : list
-  const epSource = source || alternates[0]?.source || 'hianime'
+  const readableChapters = mode === 'manga'
+    ? chapters.filter((c: any) => c.readable !== false && !c.externalUrl)
+    : chapters
+  const list = readableChapters.length ? readableChapters : (episodes.length ? episodes.filter((e: any) => !e.url) : [])
+  const orderedList = mode === 'manga' ? [...list] : list
+  const epSource = info.source || source || alternates[0]?.source || 'hianime'
 
   return (
     <motion.div className="fade-in pb-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -158,14 +185,19 @@ export default function DetailPage() {
         <ArrowLeft size={16} /> Back
       </button>
 
+      {info.resolved && (
+        <div className="glass-card p-3 mb-4 text-sm glow-text-cyan">
+          ✓ Loaded from {info.sourceName || info.resolvedFrom} — fully in-app
+        </div>
+      )}
+
       <div className="glass-card overflow-hidden mb-6">
         <div className="flex flex-col md:flex-row gap-6 p-5">
           <div className="flex-shrink-0 mx-auto md:mx-0">
             {info.image ? (
-              <motion.img src={info.image} alt={info.title}
+              <img src={info.image} alt={info.title}
                 className="w-40 md:w-48 rounded-xl object-cover"
-                style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
-                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} />
+                style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }} />
             ) : (
               <div className="w-40 h-60 shimmer rounded-xl" />
             )}
@@ -227,10 +259,10 @@ export default function DetailPage() {
                   {mode === 'manga' ? 'Start Reading' : 'Start Watching'}
                 </button>
               )}
-              {mode !== 'manga' && (
-                <button className="action-btn" onClick={findStreams} disabled={loadingAlts}>
+              {mode !== 'manga' && list.length === 0 && (
+                <button className="action-btn primary" onClick={findStreams} disabled={loadingAlts}>
                   <RefreshCw size={16} className={loadingAlts ? 'animate-spin' : ''} />
-                  Find Streams
+                  Find In-App Stream
                 </button>
               )}
             </div>
@@ -242,23 +274,22 @@ export default function DetailPage() {
         <div className="mb-6">
           <div className="section-title">
             <Layers size={14} className="glow-text-cyan" />
-            Available Streams ({alternates.length})
+            In-App Sources ({alternates.length})
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2">
             {alternates.map((alt) => (
-              <motion.div key={alt.source}
+              <div key={alt.source}
                 className="glass-card p-3 flex-shrink-0 cursor-pointer min-w-[140px]"
-                onClick={() => navigate(`/${mode}/${alt.source}/${alt.id}`)}
-                whileHover={{ scale: 1.05 }}>
+                onClick={() => navigate(`/${mode}/${alt.source}/${alt.id}`)}>
                 <p className="text-sm font-bold">{alt.sourceName}</p>
-                <p className="text-xs opacity-50 mt-1">Tap to open</p>
-              </motion.div>
+                <p className="text-xs opacity-50 mt-1">Stream inside app</p>
+              </div>
             ))}
           </div>
         </div>
       )}
 
-      {list.length > 0 && (
+      {list.length > 0 ? (
         <div className="mb-6">
           <div className="section-title">
             {mode === 'manga' ? 'Chapters' : 'Episodes'}
@@ -274,22 +305,25 @@ export default function DetailPage() {
                 initial="initial"
                 animate="animate"
                 transition={{ delay: Math.min(i * 0.02, 0.4) }}
-                whileHover={{ x: 6, backgroundColor: 'rgba(0,245,255,0.05)' }}
-                whileTap={{ scale: 0.99 }}
               >
                 <div className="w-8 h-8 rounded-lg bg-purple-900/40 flex items-center justify-center text-xs font-bold text-cyan-400">
                   {item.number || i + 1}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold truncate">{item.title}</div>
-                  {item.externalUrl && <span className="text-xs text-cyan-400">External ↗</span>}
-                  {item.readable === false && <span className="text-xs text-orange-400">External</span>}
                   {item.isFiller && <span className="text-xs text-orange-400">Filler</span>}
                 </div>
                 <ChevronRight size={16} className="opacity-30" />
               </motion.div>
             ))}
           </div>
+        </div>
+      ) : mode === 'manga' && (
+        <div className="glass-card p-6 text-center mb-6">
+          <p className="opacity-60 mb-3">Chapters loading from alternate source...</p>
+          <button className="action-btn primary" onClick={() => navigate(-1)}>
+            Go back and search ComicK source
+          </button>
         </div>
       )}
 
@@ -301,26 +335,11 @@ export default function DetailPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {similar.map((s) => (
-              <motion.div key={s.id} className="glass-card p-2 cursor-pointer"
-                onClick={() => navigate(`/${s.mode || mode}/${s.source}/${s.id}`)}
-                whileHover={{ scale: 1.03 }}>
+              <div key={s.id} className="glass-card p-2 cursor-pointer"
+                onClick={() => navigate(`/${s.mode || mode}/${s.source}/${s.id}`)}>
                 {s.image && <img src={s.image} alt={s.title} className="w-full h-28 object-cover rounded-lg mb-2" />}
                 <p className="text-xs font-semibold truncate">{s.title}</p>
-                {s.score && <p className="text-xs text-yellow-400">★ {s.score}</p>}
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {info.streamable === false && info.streamingLinks?.length > 0 && (
-        <div className="glass-card p-4 mt-4">
-          <div className="section-title mb-3">Watch On</div>
-          <div className="flex flex-wrap gap-2">
-            {info.streamingLinks.map((link: any) => (
-              <a key={link.url} href={link.url} target="_blank" rel="noopener noreferrer" className="action-btn primary">
-                {link.site} ↗
-              </a>
+              </div>
             ))}
           </div>
         </div>

@@ -329,6 +329,7 @@ body {
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -570,27 +571,6 @@ body {
   background: var(--neon-cyan);
   box-shadow: 0 0 8px var(--neon-cyan);
 }
-
-.nav-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 8px 12px;
-  font-size: 0.7rem;
-  opacity: 0.6;
-  transition: opacity 0.2s ease;
-}
-
-.nav-item.active {
-  opacity: 1;
-}
-
 
 /* Page transition blur */
 .page-enter {

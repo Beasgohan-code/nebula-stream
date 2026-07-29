@@ -35,18 +35,18 @@ export async function searchAnime(query, source = 'all', limit = 24) {
   }
 
   return cached(cacheKey('search-anime', query, limit), 90000, async () => {
-    const anilist = await searchAniList(query, Math.min(limit, 15), 'ANIME').catch(() => []);
-    if (anilist.length >= 8) return anilist.slice(0, limit);
+    const streamResults = await mergeResultsConcurrent([
+      () => searchAnimeStream('hianime', query, 6).catch(() => []),
+      () => searchAnimeStream('animepahe', query, 6).catch(() => []),
+      () => searchAnimeStream('animekai', query, 4).catch(() => []),
+    ], limit, 2);
 
-    const streamFactories = [
-      () => searchAnimeStream('hianime', query, 5).catch(() => []),
-      () => searchAnimeStream('animepahe', query, 5).catch(() => []),
-    ];
-    const streamResults = await mergeResultsConcurrent(streamFactories, limit, 2);
+    if (streamResults.length >= 4) return streamResults.slice(0, limit);
 
-    const seen = new Set(anilist.map((i) => i.title?.toLowerCase()));
-    const merged = [...anilist];
-    for (const item of streamResults) {
+    const anilist = await searchAniList(query, Math.min(10, limit), 'ANIME').catch(() => []);
+    const seen = new Set(streamResults.map((i) => i.title?.toLowerCase()));
+    const merged = [...streamResults];
+    for (const item of anilist) {
       const key = item.title?.toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.add(key);

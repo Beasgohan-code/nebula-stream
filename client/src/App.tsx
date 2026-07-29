@@ -68,7 +68,7 @@ function AnimatedRoutes() {
         <Route path="/library" element={<PageWrapper><LibraryPage /></PageWrapper>} />
         <Route path="/settings" element={<PageWrapper><SettingsPage /></PageWrapper>} />
         <Route path="/:mode/:source/:id" element={<PageWrapper><DetailPage /></PageWrapper>} />
-        <Route path="/read/:source/:mangaId/:chapterId" element={<ImmersiveWrapper><ReaderPage /></ImmersiveWrapper>} />
+        <Route path="/read/:source/:mangaId" element={<ImmersiveWrapper><ReaderPage /></ImmersiveWrapper>} />
         <Route path="/watch/:mode/:source/:episodeId" element={<ImmersiveWrapper><PlayerPage /></ImmersiveWrapper>} />
       </Routes>
     </div>

@@ -4,15 +4,16 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2, Download, RefreshCw
 } from 'lucide-react'
-import { fetchMangaChapter, getMangaDownloadUrl } from '../services/api'
+import { fetchMangaChapter, getMangaDownloadUrl, getImageProxyUrl } from '../services/api'
 import { useToast } from '../components/Toast'
 import { useApp } from '../context/AppContext'
 
 export default function ReaderPage() {
-  const { source, mangaId, chapterId } = useParams<{
-    source: string; mangaId: string; chapterId: string
+  const { source, mangaId } = useParams<{
+    source: string; mangaId: string
   }>()
   const [searchParams] = useSearchParams()
+  const chapterId = searchParams.get('chapterId') || ''
   const navigate = useNavigate()
   const { toast } = useToast()
   const { updateProgress, addHistory } = useApp()
@@ -31,14 +32,15 @@ export default function ReaderPage() {
 
   const goChapter = (id: string, swap: 'prev' | 'next') => {
     const params = new URLSearchParams(searchParams)
+    params.set('chapterId', id)
     if (swap === 'next') {
-      params.set('prev', chapterId!)
+      params.set('prev', chapterId)
       params.delete('next')
     } else {
-      params.set('next', chapterId!)
+      params.set('next', chapterId)
       params.delete('prev')
     }
-    navigate(`/read/${source}/${mangaId}/${id}?${params}`)
+    navigate(`/read/${source}/${mangaId}?${params}`)
   }
 
   const saveReadingProgress = (pct: number) => {
@@ -72,13 +74,14 @@ export default function ReaderPage() {
     })
       .then((data) => {
         if (data.error) throw new Error(data.error)
-        if (data.externalUrl) {
-          window.location.href = data.externalUrl
-          return
+        if (!data.pages?.length) {
+          throw new Error('No pages — trying alternate sources...')
         }
-        if (!data.pages?.length) throw new Error('No pages — tap retry to try other sources')
-        if (data.fallbackUsed) toast(`Loaded from ${data.provider} (fallback)`, 'success')
-        setPages(data.pages || [])
+        if (data.fallbackUsed) toast(`Loaded from ${data.provider} (in-app)`, 'success')
+        const proxied = (data.pages || []).map((p: string) =>
+          getImageProxyUrl(p, source === 'comick' ? 'https://comick.io' : undefined)
+        )
+        setPages(proxied)
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))

@@ -4,11 +4,8 @@ import { getMangaChapter } from './manga.js';
 
 export async function downloadMangaChapter(source, mangaId, chapterId, res) {
   const data = await getMangaChapter(source, mangaId, chapterId);
-  if (data.externalUrl) {
-    return res.redirect(data.externalUrl);
-  }
   if (!data.pages?.length) {
-    return res.status(404).json({ error: 'No pages to download' });
+    return res.status(404).json({ error: 'No pages to download — try reading in app first' });
   }
 
   const zip = new JSZip();
@@ -50,5 +47,21 @@ export async function proxyStream(url, res, download = false) {
   if (download) {
     res.setHeader('Content-Disposition', 'attachment; filename="episode.mp4"');
   }
+  response.data.pipe(res);
+}
+
+export async function proxyImage(url, res, referer = '') {
+  const response = await axios.get(url, {
+    responseType: 'stream',
+    timeout: 20000,
+    headers: {
+      Referer: referer || new URL(url).origin,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      Accept: 'image/*,*/*',
+    },
+  });
+
+  res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
   response.data.pipe(res);
 }
