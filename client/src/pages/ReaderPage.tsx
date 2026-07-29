@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2
+  ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2, Download
 } from 'lucide-react'
-import { fetchMangaChapter } from '../services/api'
+import { fetchMangaChapter, getMangaDownloadUrl } from '../services/api'
 
 export default function ReaderPage() {
   const { source, mangaId, chapterId } = useParams<{
@@ -107,6 +107,14 @@ export default function ReaderPage() {
               Page {currentPage + 1} / {pages.length}
             </span>
             <div className="flex gap-2">
+              <a
+                href={getMangaDownloadUrl(source!, mangaId!, chapterId!)}
+                className="action-btn primary py-2 px-3"
+                onClick={(e) => e.stopPropagation()}
+                download
+              >
+                <Download size={16} /> ZIP
+              </a>
               <button className="action-btn p-2" onClick={(e) => { e.stopPropagation(); setFit(f => f === 'width' ? 'height' : 'width') }}>
                 {fit === 'width' ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
               </button>

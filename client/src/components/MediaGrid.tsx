@@ -2,6 +2,11 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
+const STREAM_SOURCES = new Set([
+  'hianime', 'animepahe', 'animekai', 'kickassanime', 'animesaturn',
+  'flixhq', 'sflix', 'dramacool', 'himovies',
+])
+
 interface MediaItem {
   id: string
   title: string
@@ -70,6 +75,11 @@ export default function MediaGrid({ items, loading }: Props) {
           {item.score && (
             <div className="absolute top-2 right-2 bg-black/70 rounded-full px-2 py-0.5 text-xs font-bold text-yellow-400">
               ★ {item.score}
+            </div>
+          )}
+          {STREAM_SOURCES.has(item.source) && (
+            <div className="absolute top-2 left-2 bg-pink-600/80 rounded-full px-2 py-0.5 text-xs font-bold">
+              ▶ Stream
             </div>
           )}
         </motion.div>

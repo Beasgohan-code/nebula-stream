@@ -23,6 +23,7 @@ import {
   getTrendingSeries,
   SERIES_SOURCES,
 } from './providers/series.js';
+import { downloadMangaChapter, proxyStream } from './providers/download.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -130,6 +131,29 @@ app.get('/api/series/:source/watch/:episodeId', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/download/manga/:source/:id/chapter/:chapterId', async (req, res) => {
+  try {
+    await downloadMangaChapter(
+      req.params.source,
+      req.params.id,
+      req.params.chapterId,
+      res
+    );
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/proxy', async (req, res) => {
+  try {
+    const { url, download } = req.query;
+    if (!url) return res.status(400).json({ error: 'url required' });
+    await proxyStream(decodeURIComponent(url), res, download === '1');
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 });
 

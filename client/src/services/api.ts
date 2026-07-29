@@ -46,3 +46,11 @@ export async function fetchSeriesEpisode(source: string, episodeId: string) {
   const res = await fetch(`${API}/series/${source}/watch/${episodeId}`)
   return res.json()
 }
+
+export function getMangaDownloadUrl(source: string, mangaId: string, chapterId: string) {
+  return `${API}/download/manga/${source}/${mangaId}/chapter/${chapterId}`
+}
+
+export function getVideoProxyUrl(url: string, download = false) {
+  return `${API}/proxy?url=${encodeURIComponent(url)}${download ? '&download=1' : ''}`
+}

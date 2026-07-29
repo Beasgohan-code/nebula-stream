@@ -3,8 +3,8 @@ import { Info, Globe, Zap, Shield } from 'lucide-react'
 
 const ALL_SOURCES = {
   manga: ['MangaDex', 'MangaKakalot', 'MangaHere', 'MangaPill', 'MangaReader', 'MangaSee'],
-  anime: ['GogoAnime', 'Zoro', 'AnimePahe', 'HiAnime', 'AnimeFox', 'AnimeSaturn', 'MyAnimeList'],
-  series: ['FlixHQ', 'SFlix', 'DramaCool', 'ViewAsian', 'MyAnimeList'],
+  anime: ['AniList', 'HiAnime', 'AnimePahe', 'AnimeKai', 'KickAssAnime', 'AnimeSaturn'],
+  series: ['AniList', 'FlixHQ', 'SFlix', 'DramaCool', 'HiMovies'],
 }
 
 export default function SettingsPage() {
@@ -50,7 +50,9 @@ export default function SettingsPage() {
           <ul className="text-sm opacity-60 space-y-2">
             <li>• Real-time search across multiple sources</li>
             <li>• Manga chapter reader with vertical scroll</li>
-            <li>• Anime & series video player (HLS)</li>
+            <li>• Anime & series streaming with in-app player</li>
+            <li>• Download manga chapters as ZIP</li>
+            <li>• Download anime/series episodes</li>
             <li>• Bookmarks & watch history</li>
             <li>• Source filtering & quick search tags</li>
             <li>• Animated nebula UI with glow effects</li>
