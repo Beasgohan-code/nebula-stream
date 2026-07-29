@@ -136,8 +136,13 @@ export async function getMangaInfo(source, id) {
         number: c.attributes.chapter,
         title: c.attributes.title || `Chapter ${c.attributes.chapter}`,
         pages: c.attributes.pages,
+        externalUrl: c.attributes.externalUrl || null,
+        readable: (c.attributes.pages || 0) > 0 && !c.attributes.externalUrl,
         source: 'mangadex',
-      })),
+      })).sort((a, b) => {
+        if (a.readable !== b.readable) return a.readable ? -1 : 1;
+        return parseFloat(b.number || 0) - parseFloat(a.number || 0);
+      }),
     };
   }
 
@@ -166,15 +171,26 @@ export async function getMangaInfo(source, id) {
 
 export async function getMangaChapter(source, mangaId, chapterId) {
   if (source === 'mangadex') {
+    const { data: chData } = await axios.get(
+      `https://api.mangadex.org/chapter/${chapterId}`,
+      { timeout: 12000 }
+    );
+    const attrs = chData.data?.attributes;
+    if (attrs?.externalUrl) {
+      return { externalUrl: attrs.externalUrl, pages: [] };
+    }
     const { data } = await axios.get(
       `https://api.mangadex.org/at-home/server/${chapterId}`,
       { timeout: 12000 }
     );
+    if (!data.chapter) {
+      return { pages: [], error: 'Chapter not available for reading' };
+    }
     const base = data.baseUrl;
     const hash = data.chapter.hash;
-    const pages = data.chapter.data.map(
-      (f) => `${base}/data/${hash}/${f}`
-    );
+    const files = data.chapter.data?.length ? data.chapter.data : data.chapter.dataSaver || [];
+    const folder = data.chapter.data?.length ? 'data' : 'data-saver';
+    const pages = files.map((f) => `${base}/${folder}/${hash}/${f}`);
     return { pages };
   }
 

@@ -24,6 +24,11 @@ export default function ReaderPage() {
     fetchMangaChapter(source, mangaId, chapterId)
       .then((data) => {
         if (data.error) throw new Error(data.error)
+        if (data.externalUrl) {
+          window.location.href = data.externalUrl
+          return
+        }
+        if (!data.pages?.length) throw new Error('No pages available — try another chapter')
         setPages(data.pages || [])
       })
       .catch((e) => setError(e.message))

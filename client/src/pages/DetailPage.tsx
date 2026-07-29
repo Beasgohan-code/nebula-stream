@@ -174,7 +174,13 @@ export default function DetailPage() {
                 className="ep-item"
                 onClick={() => {
                   if (mode === 'manga') {
-                    navigate(`/read/${source}/${id}/${item.id}`)
+                    if (item.externalUrl) {
+                      window.open(item.externalUrl, '_blank')
+                    } else {
+                      navigate(`/read/${source}/${id}/${item.id}`)
+                    }
+                  } else if (item.url) {
+                    window.open(item.url, '_blank')
                   } else {
                     navigate(`/watch/${mode}/${source}/${item.id}`)
                   }
@@ -186,6 +192,8 @@ export default function DetailPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold truncate">{item.title}</div>
+                  {item.externalUrl && <span className="text-xs text-cyan-400">External ↗</span>}
+                  {item.site && <span className="text-xs text-cyan-400">{item.site} ↗</span>}
                   {item.isFiller && <span className="text-xs text-orange-400">Filler</span>}
                 </div>
                 <ChevronRight size={16} className="opacity-30" />
@@ -195,7 +203,20 @@ export default function DetailPage() {
         </div>
       )}
 
-      {info.streamable === false && (
+      {info.streamable === false && info.streamingLinks?.length > 0 && (
+        <div className="glass-card p-4 mt-4">
+          <div className="section-title mb-3">Watch On</div>
+          <div className="flex flex-wrap gap-2">
+            {info.streamingLinks.map((link: any) => (
+              <a key={link.url} href={link.url} target="_blank" rel="noopener noreferrer" className="action-btn primary">
+                {link.site} ↗
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {info.streamable === false && !info.streamingLinks?.length && (
         <div className="glass-card p-4 mt-4 text-center text-sm opacity-60">
           Metadata from MyAnimeList. Select a streamable source from search for playback.
         </div>

@@ -1,46 +1,25 @@
 import axios from 'axios';
+import {
+  searchAniList,
+  getTrendingAniList,
+  getAniListInfo,
+} from './anilist.js';
 
 const CONSUMET = 'https://api.consumet.org';
-const JIKAN = 'https://api.jikan.moe/v4';
 
 const ANIME_SOURCES = [
+  { id: 'anilist', name: 'AniList', color: '#02A9FF' },
   { id: 'gogoanime', name: 'GogoAnime', color: '#ff006e' },
   { id: 'zoro', name: 'Zoro', color: '#8338ec' },
   { id: 'animepahe', name: 'AnimePahe', color: '#3a86ff' },
-  { id: 'animefox', name: 'AnimeFox', color: '#fb5607' },
-  { id: 'animesaturn', name: 'AnimeSaturn', color: '#06d6a0' },
   { id: 'hianime', name: 'HiAnime', color: '#ef476f' },
 ];
-
-async function searchJikan(query, limit = 12) {
-  try {
-    const { data } = await axios.get(`${JIKAN}/anime`, {
-      params: { q: query, limit, order_by: 'popularity', sort: 'asc' },
-      timeout: 12000,
-    });
-    return data.data.map((a) => ({
-      id: String(a.mal_id),
-      title: a.title,
-      image: a.images?.webp?.large_image_url || a.images?.jpg?.large_image_url,
-      source: 'jikan',
-      sourceName: 'MyAnimeList',
-      description: a.synopsis || '',
-      score: a.score,
-      episodes: a.episodes,
-      status: a.status,
-      genres: a.genres?.map((g) => g.name) || [],
-      type: 'metadata',
-    }));
-  } catch {
-    return [];
-  }
-}
 
 async function searchConsumetAnime(provider, query, limit = 20) {
   try {
     const { data } = await axios.get(
       `${CONSUMET}/anime/${provider}/${encodeURIComponent(query)}`,
-      { timeout: 12000 }
+      { timeout: 8000, maxRedirects: 0, validateStatus: (s) => s < 400 }
     );
     const results = data.results || [];
     const source = ANIME_SOURCES.find((s) => s.id === provider);
@@ -50,8 +29,6 @@ async function searchConsumetAnime(provider, query, limit = 20) {
       image: a.image,
       source: provider,
       sourceName: source?.name || provider,
-      description: '',
-      subOrDub: a.subOrDub,
       type: 'streamable',
     }));
   } catch {
@@ -60,81 +37,67 @@ async function searchConsumetAnime(provider, query, limit = 20) {
 }
 
 export async function searchAnime(query, source = 'all', limit = 24) {
-  const streamSources =
-    source === 'all'
-      ? ['gogoanime', 'zoro', 'animepahe', 'hianime']
-      : source === 'jikan'
-        ? []
-        : [source];
-
-  const tasks = [
-    searchJikan(query, Math.min(12, limit)),
-    ...streamSources.map((s) =>
-      searchConsumetAnime(s, query, Math.ceil(limit / streamSources.length))
-    ),
-  ];
-
-  const results = await Promise.allSettled(tasks);
-  return results
-    .filter((r) => r.status === 'fulfilled')
-    .flatMap((r) => r.value)
-    .filter((a, i, arr) => {
+  if (source === 'anilist' || source === 'all') {
+    const anilist = await searchAniList(query, limit, 'ANIME').catch(() => []);
+    if (source === 'anilist') return anilist;
+    const streamSources = ['gogoanime', 'zoro', 'hianime'];
+    const streams = await Promise.allSettled(
+      streamSources.map((s) => searchConsumetAnime(s, query, 6))
+    );
+    const streamResults = streams
+      .filter((r) => r.status === 'fulfilled')
+      .flatMap((r) => r.value);
+    const merged = [...anilist, ...streamResults];
+    const seen = new Set();
+    return merged.filter((a) => {
       const key = a.title?.toLowerCase();
-      return arr.findIndex((x) => x.title?.toLowerCase() === key) === i;
-    });
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, limit);
+  }
+
+  return searchConsumetAnime(source, query, limit);
 }
 
 export async function getAnimeInfo(source, id) {
-  if (source === 'jikan') {
-    const { data } = await axios.get(`${JIKAN}/anime/${id}/full`, {
-      timeout: 12000,
-    });
-    const a = data.data;
-    return {
-      id,
-      title: a.title,
-      image: a.images?.webp?.large_image_url,
-      source: 'jikan',
-      sourceName: 'MyAnimeList',
-      description: a.synopsis,
-      score: a.score,
-      episodes: a.episodes,
-      status: a.status,
-      genres: a.genres?.map((g) => g.name),
-      streamable: false,
-    };
+  if (source === 'anilist') {
+    return getAniListInfo(id, 'ANIME');
   }
 
-  const { data } = await axios.get(
-    `${CONSUMET}/anime/${source}/info/${encodeURIComponent(id)}`,
-    { timeout: 12000 }
-  );
-
-  return {
-    id: data.id || id,
-    title: data.title,
-    image: data.image,
-    source,
-    sourceName: ANIME_SOURCES.find((s) => s.id === source)?.name || source,
-    description: data.description || '',
-    genres: data.genres || [],
-    episodes: (data.episodes || []).map((ep) => ({
-      id: ep.id,
-      number: ep.number,
-      title: ep.title || `Episode ${ep.number}`,
-      isFiller: ep.isFiller,
-      isRecap: ep.isRecap,
-    })),
-    streamable: true,
-  };
+  try {
+    const { data } = await axios.get(
+      `${CONSUMET}/anime/${source}/info/${encodeURIComponent(id)}`,
+      { timeout: 12000, maxRedirects: 0, validateStatus: (s) => s < 400 }
+    );
+    return {
+      id: data.id || id,
+      title: data.title,
+      image: data.image,
+      source,
+      sourceName: ANIME_SOURCES.find((s) => s.id === source)?.name || source,
+      description: data.description || '',
+      genres: data.genres || [],
+      episodes: (data.episodes || []).map((ep) => ({
+        id: ep.id,
+        number: ep.number,
+        title: ep.title || `Episode ${ep.number}`,
+      })),
+      streamable: true,
+    };
+  } catch {
+    return getAniListInfo(id, 'ANIME');
+  }
 }
 
 export async function getAnimeEpisode(source, episodeId) {
+  if (source === 'anilist') {
+    return { external: true, message: 'Use episode link from detail page' };
+  }
   const { data } = await axios.get(
     `${CONSUMET}/anime/${source}/watch?episodeId=${encodeURIComponent(episodeId)}`,
     { timeout: 15000 }
   );
-
   return {
     sources: (data.sources || []).map((s) => ({
       url: s.url,
@@ -142,28 +105,11 @@ export async function getAnimeEpisode(source, episodeId) {
       isM3U8: s.isM3U8,
     })),
     subtitles: data.subtitles || [],
-    intro: data.intro,
-    outro: data.outro,
   };
 }
 
 export async function getTrendingAnime(limit = 20) {
-  try {
-    const { data } = await axios.get(`${JIKAN}/top/anime`, {
-      params: { limit },
-      timeout: 12000,
-    });
-    return data.data.map((a) => ({
-      id: String(a.mal_id),
-      title: a.title,
-      image: a.images?.webp?.large_image_url,
-      source: 'jikan',
-      sourceName: 'MyAnimeList',
-      score: a.score,
-    }));
-  } catch {
-    return [];
-  }
+  return getTrendingAniList(limit, 'ANIME');
 }
 
 export { ANIME_SOURCES };
