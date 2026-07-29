@@ -82,15 +82,20 @@ export default function ReaderPage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [source, mangaId, chapterId, searchParams, toast])
+  }, [source, mangaId, chapterId, title, chapter, toast])
 
   useEffect(() => {
+    let lastSave = 0
     const onScroll = () => {
       const doc = document.documentElement
       const pct = (window.scrollY / (doc.scrollHeight - doc.clientHeight)) * 100
       const clamped = Number.isFinite(pct) ? Math.min(100, Math.max(0, pct)) : 0
       setScrollProgress(clamped)
-      saveReadingProgress(clamped)
+      const now = Date.now()
+      if (now - lastSave > 3000) {
+        lastSave = now
+        saveReadingProgress(clamped)
+      }
     }
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)

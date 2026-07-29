@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import type { ReactNode } from 'react'
 
 export type Mode = 'manga' | 'anime' | 'series'
@@ -90,62 +90,94 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('ns-queue', JSON.stringify(queue.slice(0, 30)))
   }, [queue])
 
-  const addBookmark = (b: Bookmark) => {
+  const addBookmark = useCallback((b: Bookmark) => {
     setBookmarks((prev) => {
       if (prev.some((x) => x.id === b.id && x.source === b.source)) return prev
       return [b, ...prev]
     })
-  }
+  }, [])
 
-  const removeBookmark = (id: string, src: string) => {
+  const removeBookmark = useCallback((id: string, src: string) => {
     setBookmarks((prev) => prev.filter((b) => !(b.id === id && b.source === src)))
-  }
+  }, [])
 
-  const isBookmarked = (id: string, src: string) =>
-    bookmarks.some((b) => b.id === id && b.source === src)
+  const isBookmarked = useCallback((id: string, src: string) =>
+    bookmarks.some((b) => b.id === id && b.source === src),
+  [bookmarks])
 
-  const addHistory = (h: HistoryItem) => {
-    setHistory((prev) => [h, ...prev.filter((x) => !(x.id === h.id && x.source === h.source))].slice(0, 50))
-  }
+  const addHistory = useCallback((h: HistoryItem) => {
+    setHistory((prev) => {
+      const existing = prev.find((x) => x.id === h.id && x.source === h.source)
+      if (existing && existing.title === h.title) {
+        return prev
+      }
+      return [h, ...prev.filter((x) => !(x.id === h.id && x.source === h.source))].slice(0, 50)
+    })
+  }, [])
 
-  const clearHistory = () => setHistory([])
+  const clearHistory = useCallback(() => setHistory([]), [])
 
-  const addRecentSearch = (q: string) => {
+  const addRecentSearch = useCallback((q: string) => {
     const trimmed = q.trim()
     if (!trimmed) return
-    setRecentSearches((prev) => [trimmed, ...prev.filter((x) => x.toLowerCase() !== trimmed.toLowerCase())].slice(0, 10))
-  }
+    setRecentSearches((prev) => {
+      const next = [trimmed, ...prev.filter((x) => x.toLowerCase() !== trimmed.toLowerCase())].slice(0, 10)
+      if (next.length === prev.length && next.every((v, i) => v === prev[i])) return prev
+      return next
+    })
+  }, [])
 
-  const clearRecentSearches = () => setRecentSearches([])
+  const clearRecentSearches = useCallback(() => setRecentSearches([]), [])
 
-  const addToQueue = (item: QueueItem) => {
+  const addToQueue = useCallback((item: QueueItem) => {
     setQueue((prev) => {
       if (prev.some((x) => x.id === item.id && x.source === item.source)) return prev
       return [item, ...prev].slice(0, 30)
     })
-  }
+  }, [])
 
-  const removeFromQueue = (id: string, src: string) => {
+  const removeFromQueue = useCallback((id: string, src: string) => {
     setQueue((prev) => prev.filter((q) => !(q.id === id && q.source === src)))
-  }
+  }, [])
 
-  const updateProgress = (id: string, src: string, progress: Partial<HistoryItem>) => {
-    setHistory((prev) => prev.map((h) =>
-      h.id === id && h.source === src ? { ...h, ...progress, visitedAt: Date.now() } : h
-    ))
-  }
+  const updateProgress = useCallback((id: string, src: string, progress: Partial<HistoryItem>) => {
+    setHistory((prev) => {
+      const idx = prev.findIndex((h) => h.id === id && h.source === src)
+      if (idx === -1) return prev
+      const current = prev[idx]
+      const nextItem = { ...current, ...progress, visitedAt: Date.now() }
+      if (
+        current.progress === nextItem.progress &&
+        current.chapterNum === nextItem.chapterNum &&
+        current.episodeNum === nextItem.episodeNum
+      ) {
+        return prev
+      }
+      const next = [...prev]
+      next[idx] = nextItem
+      return next
+    })
+  }, [])
 
-  const getProgress = (id: string, src: string) =>
-    history.find((h) => h.id === id && h.source === src)
+  const getProgress = useCallback((id: string, src: string) =>
+    history.find((h) => h.id === id && h.source === src),
+  [history])
+
+  const value = useMemo(() => ({
+    mode, setMode, source, setSource,
+    bookmarks, addBookmark, removeBookmark, isBookmarked,
+    history, addHistory, clearHistory,
+    recentSearches, addRecentSearch, clearRecentSearches,
+    queue, addToQueue, removeFromQueue, updateProgress, getProgress,
+  }), [
+    mode, source, bookmarks, history, recentSearches, queue,
+    addBookmark, removeBookmark, isBookmarked, addHistory, clearHistory,
+    addRecentSearch, clearRecentSearches, addToQueue, removeFromQueue,
+    updateProgress, getProgress,
+  ])
 
   return (
-    <AppContext.Provider value={{
-      mode, setMode, source, setSource,
-      bookmarks, addBookmark, removeBookmark, isBookmarked,
-      history, addHistory, clearHistory,
-      recentSearches, addRecentSearch, clearRecentSearches,
-      queue, addToQueue, removeFromQueue, updateProgress, getProgress,
-    }}>
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   )

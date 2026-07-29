@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
@@ -45,23 +44,12 @@ export default function MediaGrid({ items, loading }: Props) {
   }
 
   return (
-    <motion.div
-      className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-4"
-      layout
-    >
-      <AnimatePresence mode="popLayout">
-      {items.map((item, i) => (
-        <motion.div
-          key={`${item.source}-${item.id}-${i}`}
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-4 media-grid-stable">
+      {items.map((item) => (
+        <div
+          key={`${item.source}-${item.id}`}
           className="media-card"
           onClick={() => navigate(`/${mode}/${item.source}/${item.id}`)}
-          initial={{ opacity: 0, y: 30, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9 }}
-          transition={{ delay: i * 0.04, type: 'spring', stiffness: 300, damping: 24 }}
-          whileHover={{ y: -8, scale: 1.04, transition: { duration: 0.2 } }}
-          whileTap={{ scale: 0.96 }}
-          layout
         >
           {item.image ? (
             <img
@@ -89,9 +77,8 @@ export default function MediaGrid({ items, loading }: Props) {
               ▶ Stream
             </div>
           )}
-        </motion.div>
+        </div>
       ))}
-      </AnimatePresence>
-    </motion.div>
+    </div>
   )
 }

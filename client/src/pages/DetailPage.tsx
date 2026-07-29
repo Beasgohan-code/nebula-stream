@@ -63,7 +63,7 @@ export default function DetailPage() {
       })
       .catch((e) => setError(e.message || 'Failed to load'))
       .finally(() => setLoading(false))
-  }, [mode, source, id, addHistory])
+  }, [mode, source, id])
 
   const findStreams = async () => {
     if (!info?.title) return

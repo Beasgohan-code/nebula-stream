@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import type { Mode } from '../context/AppContext'
 import { useApp } from '../context/AppContext'
 import { BookOpen, Tv, Film } from 'lucide-react'
@@ -13,37 +12,21 @@ export default function ModeSwitcher() {
   const { mode, setMode } = useApp()
 
   return (
-    <div className="flex gap-2 flex-wrap relative">
+    <div className="flex gap-2 flex-wrap">
       {MODES.map((m) => {
         const Icon = m.icon
         const active = mode === m.id
         return (
-          <motion.button
+          <button
             key={m.id}
+            type="button"
             className={`mode-tab ${active ? 'active' : ''}`}
             onClick={() => setMode(m.id)}
-            whileTap={{ scale: 0.95 }}
-            whileHover={{ scale: 1.03 }}
-            layout
+            style={active ? { borderColor: m.color, color: m.color } : undefined}
           >
-            {active && (
-              <motion.div
-                className="mode-tab-glow"
-                layoutId="mode-glow"
-                style={{ boxShadow: `0 0 20px ${m.color}60, inset 0 0 20px ${m.color}20` }}
-                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-2">
-              <motion.span
-                animate={active ? { rotate: [0, -10, 10, 0] } : {}}
-                transition={{ duration: 0.4 }}
-              >
-                <Icon size={14} style={{ color: active ? m.color : undefined }} />
-              </motion.span>
-              {m.label}
-            </span>
-          </motion.button>
+            <Icon size={14} />
+            {m.label}
+          </button>
         )
       })}
     </div>

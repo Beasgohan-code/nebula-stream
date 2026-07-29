@@ -109,7 +109,13 @@ export default function PlayerPage() {
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    const onTime = () => saveProgress()
+    let lastSave = 0
+    const onTime = () => {
+      const now = Date.now()
+      if (now - lastSave < 4000) return
+      lastSave = now
+      saveProgress()
+    }
     const onEnded = () => {
       saveProgress()
       if (nextEp) {

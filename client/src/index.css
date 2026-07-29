@@ -523,14 +523,45 @@ body {
   cursor: pointer;
 }
 
-/* Nav indicator */
-.nav-item {
-  position: relative;
+/* Stable grid — no layout thrash */
+.media-grid-stable .media-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.media-grid-stable .media-card:hover {
+  transform: translateY(-4px) scale(1.02);
+}
+
+.continue-card {
+  transition: transform 0.2s ease;
+}
+
+.continue-card:hover {
+  transform: scale(1.04);
+}
+
+.pulse-dot {
+  animation: pulseDot 2.5s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.75; }
+}
+
+.hero-slide-img {
+  animation: heroFade 0.4s ease;
+}
+
+@keyframes heroFade {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}
+
+/* Nav indicator — static, no layoutId */
 .nav-indicator {
   position: absolute;
-  bottom: -2px;
+  bottom: 2px;
   left: 50%;
   transform: translateX(-50%);
   width: 20px;
@@ -539,6 +570,27 @@ body {
   background: var(--neon-cyan);
   box-shadow: 0 0 8px var(--neon-cyan);
 }
+
+.nav-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 0.7rem;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.nav-item.active {
+  opacity: 1;
+}
+
 
 /* Page transition blur */
 .page-enter {

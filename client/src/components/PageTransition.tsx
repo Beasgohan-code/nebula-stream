@@ -2,16 +2,14 @@ import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
 
 export const pageVariants = {
-  initial: { opacity: 0, y: 24, scale: 0.98 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, y: -16, scale: 0.98 },
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0 },
 }
 
 export const pageTransition = {
-  type: 'spring' as const,
-  stiffness: 260,
-  damping: 26,
-  mass: 0.8,
+  duration: 0.25,
+  ease: [0.22, 1, 0.36, 1] as const,
 }
 
 export const staggerContainer = {
@@ -19,48 +17,20 @@ export const staggerContainer = {
 }
 
 export const staggerItem = {
-  initial: { opacity: 0, y: 20, scale: 0.95 },
-  animate: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, scale: 0.95 },
-}
-
-export const fadeUp = {
-  initial: { opacity: 0, y: 30 },
+  initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
-}
-
-export const scaleIn = {
-  initial: { opacity: 0, scale: 0.85 },
-  animate: { opacity: 1, scale: 1 },
-  transition: { type: 'spring', stiffness: 300, damping: 24 },
-}
-
-export const slideFromRight = {
-  initial: { opacity: 0, x: 40 },
-  animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: -40 },
-}
-
-export const immersiveEnter = {
-  initial: { opacity: 0, scale: 1.02 },
-  animate: { opacity: 1, scale: 1 },
-  exit: { opacity: 0, scale: 0.98 },
 }
 
 export const listItem = {
-  initial: { opacity: 0, x: -16 },
+  initial: { opacity: 0, x: -8 },
   animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: 16 },
 }
 
 export function PageWrapper({ children }: { children: ReactNode }) {
   return (
     <motion.div
-      variants={pageVariants}
-      initial="initial"
-      animate="animate"
-      exit="exit"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={pageTransition}
     >
       {children}
@@ -71,11 +41,9 @@ export function PageWrapper({ children }: { children: ReactNode }) {
 export function ImmersiveWrapper({ children }: { children: ReactNode }) {
   return (
     <motion.div
-      variants={immersiveEnter}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
     >
       {children}
     </motion.div>
