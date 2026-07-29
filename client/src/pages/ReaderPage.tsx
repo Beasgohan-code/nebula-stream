@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { fetchMangaChapter, getMangaDownloadUrl } from '../services/api'
 import { useToast } from '../components/Toast'
+import { useApp } from '../context/AppContext'
 
 export default function ReaderPage() {
   const { source, mangaId, chapterId } = useParams<{
@@ -14,20 +15,61 @@ export default function ReaderPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { updateProgress, addHistory } = useApp()
   const [pages, setPages] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [currentPage, setCurrentPage] = useState(0)
   const [fit, setFit] = useState<'width' | 'height'>('width')
   const [showControls, setShowControls] = useState(true)
+  const [scrollProgress, setScrollProgress] = useState(0)
+
+  const title = searchParams.get('title') || ''
+  const chapter = searchParams.get('chapter') || ''
+  const prevChapter = searchParams.get('prev')
+  const nextChapter = searchParams.get('next')
+
+  const goChapter = (id: string, swap: 'prev' | 'next') => {
+    const params = new URLSearchParams(searchParams)
+    if (swap === 'next') {
+      params.set('prev', chapterId!)
+      params.delete('next')
+    } else {
+      params.set('next', chapterId!)
+      params.delete('prev')
+    }
+    navigate(`/read/${source}/${mangaId}/${id}?${params}`)
+  }
+
+  const saveReadingProgress = (pct: number) => {
+    if (!mangaId || !source || !title) return
+    updateProgress(mangaId, source, {
+      progress: `${Math.round(pct)}%`,
+      chapterNum: chapter || undefined,
+      title,
+      mode: 'manga',
+      visitedAt: Date.now(),
+    })
+  }
 
   useEffect(() => {
     if (!source || !mangaId || !chapterId) return
+    if (title) {
+      addHistory({
+        id: mangaId,
+        title,
+        source,
+        mode: 'manga',
+        chapterNum: chapter || undefined,
+        visitedAt: Date.now(),
+      })
+    }
     setLoading(true)
-    const title = searchParams.get('title') || undefined
-    const chapter = searchParams.get('chapter') || undefined
 
-    fetchMangaChapter(source, mangaId, chapterId, { title, chapter })
+    fetchMangaChapter(source, mangaId, chapterId, {
+      title: title || undefined,
+      chapter: chapter || undefined,
+    })
       .then((data) => {
         if (data.error) throw new Error(data.error)
         if (data.externalUrl) {
@@ -41,6 +83,18 @@ export default function ReaderPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [source, mangaId, chapterId, searchParams, toast])
+
+  useEffect(() => {
+    const onScroll = () => {
+      const doc = document.documentElement
+      const pct = (window.scrollY / (doc.scrollHeight - doc.clientHeight)) * 100
+      const clamped = Number.isFinite(pct) ? Math.min(100, Math.max(0, pct)) : 0
+      setScrollProgress(clamped)
+      saveReadingProgress(clamped)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [mangaId, source, title, chapter])
 
   const nextPage = useCallback(() => {
     setCurrentPage((p) => Math.min(p + 1, pages.length - 1))
@@ -130,6 +184,7 @@ export default function ReaderPage() {
               <ArrowLeft size={16} /> Back
             </button>
             <span className="text-sm font-semibold glow-text-cyan">
+              {title && <span className="block truncate max-w-[140px] sm:max-w-none">{title}</span>}
               Page {currentPage + 1} / {pages.length}
             </span>
             <div className="flex gap-2">
@@ -173,24 +228,49 @@ export default function ReaderPage() {
       <AnimatePresence>
         {showControls && (
           <motion.div
-            className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-center gap-6 p-4"
+            className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center gap-3 p-4"
             style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)' }}
             initial={{ y: 60, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 60, opacity: 0 }}
           >
-            <button className="action-btn" onClick={(e) => { e.stopPropagation(); prevPage() }}>
-              <ChevronLeft size={20} />
-            </button>
-            <div className="w-32 h-1 bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-pink-500 to-cyan-400 transition-all"
-                style={{ width: `${((currentPage + 1) / pages.length) * 100}%` }}
+            <div className="w-full max-w-md h-1 bg-gray-800 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-gradient-to-r from-pink-500 to-cyan-400"
+                animate={{ width: `${scrollProgress}%` }}
+                transition={{ duration: 0.2 }}
               />
             </div>
-            <button className="action-btn" onClick={(e) => { e.stopPropagation(); nextPage() }}>
-              <ChevronRight size={20} />
-            </button>
+            <div className="flex items-center justify-center gap-4 w-full">
+              <motion.button
+                className="action-btn"
+                disabled={!prevChapter}
+                onClick={(e) => { e.stopPropagation(); if (prevChapter) goChapter(prevChapter, 'prev') }}
+                whileTap={{ scale: 0.9 }}
+              >
+                <ChevronLeft size={20} /> Ch
+              </motion.button>
+              <button className="action-btn" onClick={(e) => { e.stopPropagation(); prevPage() }}>
+                <ChevronLeft size={20} />
+              </button>
+              <div className="w-24 h-1 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-pink-500 to-cyan-400 transition-all"
+                  style={{ width: `${((currentPage + 1) / pages.length) * 100}%` }}
+                />
+              </div>
+              <button className="action-btn" onClick={(e) => { e.stopPropagation(); nextPage() }}>
+                <ChevronRight size={20} />
+              </button>
+              <motion.button
+                className="action-btn primary"
+                disabled={!nextChapter}
+                onClick={(e) => { e.stopPropagation(); if (nextChapter) goChapter(nextChapter, 'next') }}
+                whileTap={{ scale: 0.9 }}
+              >
+                Ch <ChevronRight size={20} />
+              </motion.button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

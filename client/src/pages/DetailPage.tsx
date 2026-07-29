@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Bookmark, BookmarkCheck, Play, BookOpen,
-  Star, Tag, ChevronRight, RefreshCw, Sparkles, Layers
+  Star, Tag, ChevronRight, RefreshCw, Sparkles, Layers, ListPlus, Share2
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useToast } from '../components/Toast'
+import { listItem } from '../components/PageTransition'
 import {
   fetchMangaInfo, fetchAnimeInfo, fetchSeriesInfo,
   fetchAlternateSources, fetchSimilar, fetchAISummary
@@ -15,7 +16,7 @@ import {
 export default function DetailPage() {
   const { mode, source, id } = useParams<{ mode: string; source: string; id: string }>()
   const navigate = useNavigate()
-  const { isBookmarked, addBookmark, removeBookmark, addHistory } = useApp()
+  const { isBookmarked, addBookmark, removeBookmark, addHistory, addToQueue } = useApp()
   const { toast } = useToast()
   const [info, setInfo] = useState<any>(null)
   const [alternates, setAlternates] = useState<any[]>([])
@@ -81,14 +82,40 @@ export default function DetailPage() {
     toast(bookmarked ? 'Removed from library' : 'Saved to library', 'success')
   }
 
-  const playEpisode = (item: any, epSource: string, epId: string) => {
+  const addQueue = () => {
+    if (!info || !id || !source || !mode) return
+    addToQueue({ id, title: info.title, image: info.image, source, mode: mode as any, addedAt: Date.now() })
+    toast('Added to watch queue', 'success')
+  }
+
+  const shareTitle = async () => {
+    const text = `Check out ${info?.title} on NebulaStream!`
+    if (navigator.share) {
+      await navigator.share({ title: info?.title, text })
+    } else {
+      await navigator.clipboard.writeText(text)
+      toast('Link copied!', 'success')
+    }
+  }
+
+  const playEpisode = (item: any, epSource: string, epId: string, index: number, orderedList: any[]) => {
+    const prev = orderedList[index - 1]
+    const next = orderedList[index + 1]
+    const navParams = new URLSearchParams({
+      title: info.title,
+      ...(mode === 'manga'
+        ? { chapter: String(item.number || item.id) }
+        : { ep: String(item.number || item.id) }),
+    })
+    if (prev) navParams.set('prev', prev.id)
+    if (next) navParams.set('next', next.id)
     if (mode === 'manga') {
       if (item.externalUrl) window.open(item.externalUrl, '_blank')
-      else navigate(`/read/${epSource}/${id}/${item.id}?title=${encodeURIComponent(info.title)}&chapter=${item.number}`)
+      else navigate(`/read/${epSource}/${id}/${item.id}?${navParams}`)
     } else if (item.url) {
       window.open(item.url, '_blank')
     } else {
-      navigate(`/watch/${mode}/${epSource}/${epId}?title=${encodeURIComponent(info.title)}&ep=${item.number || item.id}`)
+      navigate(`/watch/${mode}/${epSource}/${epId}?${navParams}`)
     }
   }
 
@@ -115,6 +142,7 @@ export default function DetailPage() {
   const chapters = info.chapters || []
   const episodes = info.episodes || []
   const list = chapters.length ? chapters : (Array.isArray(episodes) ? episodes : [])
+  const orderedList = mode === 'manga' ? [...list].reverse() : list
   const epSource = source || alternates[0]?.source || 'hianime'
 
   return (
@@ -180,8 +208,14 @@ export default function DetailPage() {
                 {bookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
                 {bookmarked ? 'Saved' : 'Save'}
               </button>
+              <button className="action-btn" onClick={addQueue}>
+                <ListPlus size={16} /> Queue
+              </button>
+              <button className="action-btn" onClick={shareTitle}>
+                <Share2 size={16} /> Share
+              </button>
               {list.length > 0 && (
-                <button className="action-btn" onClick={() => playEpisode(list[0], epSource, list[0].id)}>
+                <button className="action-btn" onClick={() => playEpisode(orderedList[0], epSource, orderedList[0].id, 0, orderedList)}>
                   {mode === 'manga' ? <BookOpen size={16} /> : <Play size={16} />}
                   {mode === 'manga' ? 'Start Reading' : 'Start Watching'}
                 </button>
@@ -224,10 +258,18 @@ export default function DetailPage() {
             <span className="text-xs opacity-50 ml-2">({list.length})</span>
           </div>
           <div className="glass-card divide-y divide-purple-900/30 max-h-96 overflow-y-auto">
-            {(mode === 'manga' ? [...list].reverse() : list).map((item: any, i: number) => (
-              <motion.div key={item.id || i} className="ep-item"
-                onClick={() => playEpisode(item, epSource, item.id)}
-                whileHover={{ x: 4 }}>
+            {orderedList.map((item: any, i: number) => (
+              <motion.div
+                key={item.id || i}
+                className="ep-item"
+                onClick={() => playEpisode(item, epSource, item.id, i, orderedList)}
+                variants={listItem}
+                initial="initial"
+                animate="animate"
+                transition={{ delay: Math.min(i * 0.02, 0.4) }}
+                whileHover={{ x: 6, backgroundColor: 'rgba(0,245,255,0.05)' }}
+                whileTap={{ scale: 0.99 }}
+              >
                 <div className="w-8 h-8 rounded-lg bg-purple-900/40 flex items-center justify-center text-xs font-bold text-cyan-400">
                   {item.number || i + 1}
                 </div>

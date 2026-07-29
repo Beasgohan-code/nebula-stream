@@ -59,7 +59,13 @@ export default function SettingsPage() {
             <li>• Auto-fallback across 20+ sources with retry</li>
             <li>• Find Streams button on detail pages</li>
             <li>• AI summaries & similar title suggestions</li>
-            <li>• Toast notifications for source switches</li>
+            <li>• Watch queue with animated library cards</li>
+            <li>• Hero carousel & genre browse on home</li>
+            <li>• Surprise Me — random trending pick</li>
+            <li>• Page transitions & spring animations</li>
+            <li>• Episode/chapter prev-next navigation</li>
+            <li>• Reading & watch progress tracking</li>
+            <li>• Auto-play next episode</li>
             <li>• Mobile-responsive design</li>
           </ul>
         </motion.div>
@@ -77,7 +83,7 @@ export default function SettingsPage() {
         </motion.div>
 
         <div className="text-center text-xs opacity-30 pt-4">
-          NebulaStream v1.0 · Built with BrainDaemon
+          NebulaStream v4.0 · Built with BrainDaemon
         </div>
       </div>
     </div>

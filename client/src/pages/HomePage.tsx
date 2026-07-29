@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Sparkles, Shuffle, Clock, History } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import ModeSwitcher from '../components/ModeSwitcher'
 import SourceFilters from '../components/SourceFilters'
 import MediaGrid from '../components/MediaGrid'
+import HeroCarousel from '../components/HeroCarousel'
+import GenreBrowse from '../components/GenreBrowse'
+import SurpriseMe from '../components/SurpriseMe'
 import { searchContent, fetchTrending, fetchDiscover } from '../services/api'
 
 const MODE_LABELS = { manga: 'Manga', anime: 'Anime', series: 'Web Series' }
@@ -106,7 +109,22 @@ export default function HomePage() {
           {MODE_LABELS[mode]} · Stream, read & download
         </p>
         <ModeSwitcher />
+        {!searched && (
+          <div className="mt-4">
+            <SurpriseMe items={trending} mode={mode} loading={trendingLoading} />
+          </div>
+        )}
       </motion.div>
+
+      {!searched && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <HeroCarousel items={trending.slice(0, 8)} mode={mode} loading={trendingLoading} />
+        </motion.div>
+      )}
 
       <motion.form
         onSubmit={handleSubmit}
@@ -162,6 +180,8 @@ export default function HomePage() {
 
       <SourceFilters />
 
+      {!searched && <GenreBrowse onSelect={(g) => { setQuery(g); doSearch(g) }} />}
+
       {!searched && continueItems.length > 0 && (
         <div className="mt-6">
           <div className="section-title">
@@ -189,23 +209,37 @@ export default function HomePage() {
       )}
 
       <div className="mt-6">
-        {searched ? (
-          <>
-            <div className="section-title">
-              <Sparkles size={14} className="glow-text-cyan" />
-              {searchQuery === 'Discover' ? 'Discover' : `Results for "${searchQuery}"`}
-            </div>
-            <MediaGrid items={results} loading={loading || discoverLoading} />
-          </>
-        ) : (
-          <>
-            <div className="section-title">
-              <Sparkles size={14} className="glow-text-pink" />
-              Trending {MODE_LABELS[mode]}
-            </div>
-            <MediaGrid items={trending} loading={trendingLoading} />
-          </>
-        )}
+        <AnimatePresence mode="wait">
+          {searched ? (
+            <motion.div
+              key="search-results"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="section-title">
+                <Sparkles size={14} className="glow-text-cyan" />
+                {searchQuery === 'Discover' ? 'Discover' : `Results for "${searchQuery}"`}
+              </div>
+              <MediaGrid items={results} loading={loading || discoverLoading} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key={`trending-${mode}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="section-title">
+                <Sparkles size={14} className="glow-text-pink" />
+                Trending {MODE_LABELS[mode]}
+              </div>
+              <MediaGrid items={trending} loading={trendingLoading} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )

@@ -128,10 +128,19 @@ body {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: color 0.3s ease, border-color 0.3s ease;
   border: 1px solid transparent;
   background: transparent;
   color: rgba(232, 224, 255, 0.5);
+  overflow: hidden;
+}
+
+.mode-tab-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 245, 255, 0.4);
+  background: rgba(0, 245, 255, 0.08);
 }
 
 .mode-tab.active {
@@ -492,4 +501,135 @@ body {
 
 @media (min-width: 768px) {
   .content-wrapper { padding: 0 24px; }
+}
+
+/* Hero carousel */
+.hero-carousel {
+  border: 1px solid rgba(181, 55, 242, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Genre chips */
+.genre-chip {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(181,55,242,0.15), rgba(0,245,255,0.1));
+  border: 1px solid rgba(181, 55, 242, 0.3);
+  color: rgba(232, 224, 255, 0.8);
+  cursor: pointer;
+}
+
+/* Nav indicator */
+.nav-item {
+  position: relative;
+}
+
+.nav-indicator {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px var(--neon-cyan);
+}
+
+/* Page transition blur */
+.page-enter {
+  animation: pageEnter 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+/* Ripple on buttons */
+.go-btn, .action-btn.primary {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Queue badge */
+.queue-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--neon-pink);
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Progress bar */
+.progress-bar {
+  height: 3px;
+  background: rgba(181, 55, 242, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-pink), var(--neon-cyan));
+  border-radius: 2px;
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Scroll to top */
+.scroll-top-btn {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  z-index: 90;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(181,55,242,0.4), rgba(0,245,255,0.3));
+  border: 1px solid rgba(0, 245, 255, 0.4);
+  color: var(--neon-cyan);
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Surprise me button */
+.surprise-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 24px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(255,45,149,0.2), rgba(181,55,242,0.2));
+  border: 1px solid rgba(255, 45, 149, 0.4);
+  color: var(--neon-pink);
+  cursor: pointer;
+  transition: box-shadow 0.3s ease;
+}
+
+.surprise-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Genre chip hover */
+.genre-chip:hover {
+  border-color: rgba(0, 245, 255, 0.5);
+  color: var(--neon-cyan);
 }

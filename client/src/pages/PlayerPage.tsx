@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Download, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Download, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
 import { fetchAnimeEpisode, fetchSeriesEpisode, getVideoProxyUrl } from '../services/api'
 import { useToast } from '../components/Toast'
+import { useApp } from '../context/AppContext'
+import type { Mode } from '../context/AppContext'
 
 export default function PlayerPage() {
   const { mode, source, episodeId } = useParams<{
@@ -12,6 +14,7 @@ export default function PlayerPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { updateProgress, addHistory } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<any>(null)
   const [sources, setSources] = useState<{ url: string; quality: string; isM3U8?: boolean }[]>([])
@@ -28,6 +31,33 @@ export default function PlayerPage() {
 
   const title = searchParams.get('title') || ''
   const ep = searchParams.get('ep') || ''
+  const prevEp = searchParams.get('prev')
+  const nextEp = searchParams.get('next')
+
+  const goEpisode = (id: string, direction: 'prev' | 'next') => {
+    const params = new URLSearchParams(searchParams)
+    if (direction === 'next') {
+      params.set('prev', episodeId!)
+      params.delete('next')
+    } else {
+      params.set('next', episodeId!)
+      params.delete('prev')
+    }
+    navigate(`/watch/${mode}/${source}/${id}?${params}`)
+  }
+
+  const saveProgress = () => {
+    const video = videoRef.current
+    if (!video || !title || !episodeId || !source || !mode) return
+    const pct = video.duration ? `${Math.round((video.currentTime / video.duration) * 100)}%` : '0%'
+    updateProgress(episodeId, source, {
+      progress: pct,
+      episodeNum: ep ? Number(ep) : undefined,
+      title,
+      mode: mode as Mode,
+      visitedAt: Date.now(),
+    })
+  }
 
   const loadStream = async (exclude: string[] = []) => {
     if (!mode || !source || !episodeId) return
@@ -63,7 +93,36 @@ export default function PlayerPage() {
 
   useEffect(() => {
     loadStream()
+    if (title && episodeId && source && mode) {
+      addHistory({
+        id: episodeId,
+        title,
+        source,
+        mode: mode as Mode,
+        episodeNum: ep ? Number(ep) : undefined,
+        visitedAt: Date.now(),
+      })
+    }
   }, [mode, source, episodeId])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const onTime = () => saveProgress()
+    const onEnded = () => {
+      saveProgress()
+      if (nextEp) {
+        toast('Playing next episode...', 'info')
+        setTimeout(() => goEpisode(nextEp, 'next'), 800)
+      }
+    }
+    video.addEventListener('timeupdate', onTime)
+    video.addEventListener('ended', onEnded)
+    return () => {
+      video.removeEventListener('timeupdate', onTime)
+      video.removeEventListener('ended', onEnded)
+    }
+  }, [nextEp, title, episodeId, source, mode, ep])
 
   useEffect(() => {
     if (!sources.length || !videoRef.current) return
@@ -174,6 +233,10 @@ export default function PlayerPage() {
             <button className="action-btn" onClick={(e) => { e.stopPropagation(); navigate(-1) }}>
               <ArrowLeft size={16} /> Back
             </button>
+            <div className="text-center flex-1 px-2 min-w-0">
+              {title && <p className="text-sm font-semibold truncate glow-text-cyan">{title}</p>}
+              {ep && <p className="text-xs opacity-50">Episode {ep}</p>}
+            </div>
             <span className="text-xs opacity-50 hidden sm:block">{usedSource}</span>
             <div className="flex gap-2 items-center">
               {sources.map((s, i) => (
@@ -208,6 +271,35 @@ export default function PlayerPage() {
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {showControls && (prevEp || nextEp) && (
+          <motion.div
+            className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-center gap-4 p-4"
+            style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)' }}
+            initial={{ y: 60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 60, opacity: 0 }}
+          >
+            <motion.button
+              className="action-btn"
+              disabled={!prevEp}
+              onClick={(e) => { e.stopPropagation(); if (prevEp) goEpisode(prevEp, 'prev') }}
+              whileTap={{ scale: 0.9 }}
+            >
+              <ChevronLeft size={18} /> Prev
+            </motion.button>
+            <motion.button
+              className="action-btn primary"
+              disabled={!nextEp}
+              onClick={(e) => { e.stopPropagation(); if (nextEp) goEpisode(nextEp, 'next') }}
+              whileTap={{ scale: 0.9 }}
+            >
+              Next <ChevronRight size={18} />
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
