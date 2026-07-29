@@ -1,7 +1,5 @@
 import axios from 'axios';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const archiver = require('archiver');
+import JSZip from 'jszip';
 import { getMangaChapter } from './manga.js';
 
 export async function downloadMangaChapter(source, mangaId, chapterId, res) {
@@ -13,12 +11,8 @@ export async function downloadMangaChapter(source, mangaId, chapterId, res) {
     return res.status(404).json({ error: 'No pages to download' });
   }
 
-  const filename = `chapter-${chapterId.slice(0, 8)}.zip`;
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
-  const archive = archiver('zip', { zlib: { level: 5 } });
-  archive.pipe(res);
+  const zip = new JSZip();
+  const folder = zip.folder(`chapter-${chapterId.slice(0, 8)}`);
 
   for (let i = 0; i < data.pages.length; i++) {
     try {
@@ -28,13 +22,17 @@ export async function downloadMangaChapter(source, mangaId, chapterId, res) {
         headers: { Referer: 'https://mangadex.org/' },
       });
       const ext = data.pages[i].includes('.png') ? 'png' : 'jpg';
-      archive.append(Buffer.from(response.data), { name: `page-${String(i + 1).padStart(3, '0')}.${ext}` });
+      folder.file(`page-${String(i + 1).padStart(3, '0')}.${ext}`, response.data);
     } catch {
       // skip failed pages
     }
   }
 
-  await archive.finalize();
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  const filename = `chapter-${chapterId.slice(0, 8)}.zip`;
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
 }
 
 export async function proxyStream(url, res, download = false) {
