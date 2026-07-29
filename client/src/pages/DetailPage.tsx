@@ -1,17 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Bookmark, BookmarkCheck, Play, BookOpen,
-  Star, Tag, ChevronRight, RefreshCw, Sparkles, Layers, ListPlus, Share2, Loader2
+  Star, Tag, ChevronRight, RefreshCw, Sparkles, Layers, ListPlus, Share2,
+  Loader2, ExternalLink, Globe
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useToast } from '../components/Toast'
 import { listItem } from '../components/PageTransition'
 import {
   fetchMangaInfo, fetchAnimeInfo, fetchSeriesInfo,
-  fetchAlternateSources, fetchSimilar, fetchAISummary
+  fetchAlternateSources, fetchSimilar, fetchAISummary, getEmbedPath
 } from '../services/api'
+
+function isExternalEpisode(item: any) {
+  return Boolean(item?.url || item?.externalUrl)
+}
 
 export default function DetailPage() {
   const { mode, source, id } = useParams<{ mode: string; source: string; id: string }>()
@@ -23,18 +28,19 @@ export default function DetailPage() {
   const [similar, setSimilar] = useState<any[]>([])
   const [aiSummary, setAiSummary] = useState('')
   const [loading, setLoading] = useState(true)
-  const [resolving, setResolving] = useState(false)
+  const [findingStreams, setFindingStreams] = useState(false)
   const [loadingAlts, setLoadingAlts] = useState(false)
   const [error, setError] = useState('')
+  const bgResolveDone = useRef(false)
 
   useEffect(() => {
     if (!mode || !source || !id) return
     setLoading(true)
-    setResolving(mode !== 'manga' && source === 'anilist')
     setError('')
     setAlternates([])
     setSimilar([])
     setAiSummary('')
+    bgResolveDone.current = false
 
     const fetcher =
       mode === 'manga' ? fetchMangaInfo :
@@ -45,26 +51,25 @@ export default function DetailPage() {
       .then(async (data) => {
         if (data.error) throw new Error(data.error)
 
-        if (data.resolved && data.resolvedFrom && data.source !== source) {
-          toast(`Found on ${data.sourceName || data.resolvedFrom} — in-app only`, 'success')
-          navigate(`/${mode}/${data.source}/${data.id}?resolved=1`, { replace: true })
-          return
+        if (data.resolved && data.resolvedFrom) {
+          toast(`Found readable source: ${data.sourceName || data.resolvedFrom}`, 'success')
         }
 
         setInfo(data)
-        setResolving(false)
         addHistory({
           id: data.id || id, title: data.title, image: data.image,
           source: data.source || source, mode: mode as any, visitedAt: Date.now(),
         })
 
-        const hasReadable = mode === 'manga'
-          ? (data.chapters || []).some((c: any) => c.readable !== false)
-          : (data.episodes || []).length > 0 && !data.episodes[0]?.url
+        const episodes = data.episodes || []
+        const chapters = data.chapters || []
+        const hasInternal = mode === 'manga'
+          ? chapters.some((c: any) => !isExternalEpisode(c))
+          : episodes.some((e: any) => !isExternalEpisode(e))
 
-        if (mode !== 'manga' && !hasReadable && data.title) {
-          setResolving(true)
-          findStreamsFor(data.title)
+        if (!hasInternal && data.title && !bgResolveDone.current) {
+          bgResolveDone.current = true
+          findStreamsInBackground(data.title)
         }
 
         if ((source === 'anilist' || data.source === 'anilist') && id) {
@@ -78,32 +83,41 @@ export default function DetailPage() {
           }, 1200)
         }
       })
-      .catch((e) => { setError(e.message || 'Failed to load'); setResolving(false) })
+      .catch((e) => setError(e.message || 'Failed to load'))
       .finally(() => setLoading(false))
   }, [mode, source, id])
 
-  const findStreamsFor = async (title: string) => {
-    setLoadingAlts(true)
+  const findStreamsInBackground = async (title: string) => {
+    setFindingStreams(true)
     try {
       const alts = await fetchAlternateSources(title, mode || 'anime')
       setAlternates(alts)
       if (alts.length) {
-        toast(`Found ${alts.length} in-app sources`, 'success')
-        navigate(`/${mode}/${alts[0].source}/${alts[0].id}`, { replace: true })
-      } else {
-        toast('No in-app stream found — try another title', 'error')
+        toast(`Found ${alts.length} in-app stream source${alts.length > 1 ? 's' : ''}`, 'success')
       }
     } catch {
-      toast('Could not find sources', 'error')
+      // silent — external preview still available
     } finally {
-      setLoadingAlts(false)
-      setResolving(false)
+      setFindingStreams(false)
     }
   }
 
   const findStreams = async () => {
     if (!info?.title) return
-    await findStreamsFor(info.title)
+    setLoadingAlts(true)
+    try {
+      const alts = await fetchAlternateSources(info.title, mode || 'anime')
+      setAlternates(alts)
+      if (alts.length) {
+        toast(`Found ${alts.length} sources — tap one to switch`, 'success')
+      } else {
+        toast('No in-app stream found — try external preview below', 'error')
+      }
+    } catch {
+      toast('Could not search sources', 'error')
+    } finally {
+      setLoadingAlts(false)
+    }
   }
 
   const bookmarked = id && source ? isBookmarked(id, source) : false
@@ -127,9 +141,20 @@ export default function DetailPage() {
     toast('Copied to clipboard!', 'success')
   }
 
+  const openEmbed = (url: string, itemTitle?: string, site?: string) => {
+    navigate(getEmbedPath(url, info?.title || '', itemTitle || site || ''))
+  }
+
   const playEpisode = (item: any, epSource: string, epId: string, index: number, orderedList: any[]) => {
     const prev = orderedList[index - 1]
     const next = orderedList[index + 1]
+    const externalUrl = item.url || item.externalUrl
+
+    if (externalUrl) {
+      openEmbed(externalUrl, item.title, item.site)
+      return
+    }
+
     const navParams = new URLSearchParams({
       title: info.title,
       ...(mode === 'manga'
@@ -142,6 +167,7 @@ export default function DetailPage() {
     if (mode === 'manga') {
       const src = item.source || epSource
       navParams.set('chapterId', item.id)
+      if (item.externalUrl) navParams.set('embedUrl', item.externalUrl)
       navigate(`/read/${src}/${info.id}?${navParams}`)
     } else {
       const src = info.source || epSource
@@ -149,12 +175,11 @@ export default function DetailPage() {
     }
   }
 
-  if (loading || resolving) {
+  if (loading) {
     return (
       <div className="text-center py-20 fade-in">
         <Loader2 size={32} className="mx-auto mb-4 animate-spin glow-text-cyan" />
-        <p className="glow-text-cyan">{resolving ? 'Finding in-app source...' : 'Loading...'}</p>
-        <p className="text-xs opacity-50 mt-2">No external links — everything stays inside NebulaStream</p>
+        <p className="glow-text-cyan">Loading...</p>
       </div>
     )
   }
@@ -172,12 +197,13 @@ export default function DetailPage() {
 
   const chapters = info.chapters || []
   const episodes = info.episodes || []
-  const readableChapters = mode === 'manga'
-    ? chapters.filter((c: any) => c.readable !== false && !c.externalUrl)
-    : chapters
-  const list = readableChapters.length ? readableChapters : (episodes.length ? episodes.filter((e: any) => !e.url) : [])
-  const orderedList = mode === 'manga' ? [...list] : list
+  const allItems = mode === 'manga' ? chapters : episodes
+  const internalItems = allItems.filter((i: any) => !isExternalEpisode(i))
+  const externalItems = allItems.filter((i: any) => isExternalEpisode(i))
+  const orderedList = internalItems.length ? internalItems : allItems
   const epSource = info.source || source || alternates[0]?.source || 'hianime'
+  const streamingLinks = info.streamingLinks || []
+  const startItem = internalItems[0] || externalItems[0] || allItems[0]
 
   return (
     <motion.div className="fade-in pb-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -187,7 +213,14 @@ export default function DetailPage() {
 
       {info.resolved && (
         <div className="glass-card p-3 mb-4 text-sm glow-text-cyan">
-          ✓ Loaded from {info.sourceName || info.resolvedFrom} — fully in-app
+          ✓ Auto-resolved to {info.sourceName || info.resolvedFrom} for in-app reading
+        </div>
+      )}
+
+      {findingStreams && (
+        <div className="glass-card p-3 mb-4 text-sm flex items-center gap-2 opacity-70">
+          <Loader2 size={14} className="animate-spin" />
+          Searching in-app stream sources...
         </div>
       )}
 
@@ -253,14 +286,14 @@ export default function DetailPage() {
               <button className="action-btn" onClick={shareTitle}>
                 <Share2 size={16} /> Share
               </button>
-              {list.length > 0 && (
-                <button className="action-btn" onClick={() => playEpisode(orderedList[0], epSource, orderedList[0].id, 0, orderedList)}>
+              {startItem && (
+                <button className="action-btn primary" onClick={() => playEpisode(startItem, epSource, startItem.id, 0, orderedList)}>
                   {mode === 'manga' ? <BookOpen size={16} /> : <Play size={16} />}
                   {mode === 'manga' ? 'Start Reading' : 'Start Watching'}
                 </button>
               )}
-              {mode !== 'manga' && list.length === 0 && (
-                <button className="action-btn primary" onClick={findStreams} disabled={loadingAlts}>
+              {mode !== 'manga' && internalItems.length === 0 && (
+                <button className="action-btn" onClick={findStreams} disabled={loadingAlts}>
                   <RefreshCw size={16} className={loadingAlts ? 'animate-spin' : ''} />
                   Find In-App Stream
                 </button>
@@ -289,18 +322,43 @@ export default function DetailPage() {
         </div>
       )}
 
-      {list.length > 0 ? (
+      {(streamingLinks.length > 0 || info.siteUrl) && (
+        <div className="mb-6">
+          <div className="section-title">
+            <Globe size={14} className="glow-text-pink" />
+            Watch On
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {streamingLinks.map((link: any, i: number) => (
+              <button
+                key={i}
+                className="action-btn text-xs"
+                onClick={() => openEmbed(link.url, link.site)}
+              >
+                <ExternalLink size={12} /> {link.site}
+              </button>
+            ))}
+            {info.siteUrl && (
+              <button className="action-btn text-xs" onClick={() => openEmbed(info.siteUrl, 'AniList')}>
+                <ExternalLink size={12} /> AniList
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {internalItems.length > 0 && (
         <div className="mb-6">
           <div className="section-title">
             {mode === 'manga' ? 'Chapters' : 'Episodes'}
-            <span className="text-xs opacity-50 ml-2">({list.length})</span>
+            <span className="text-xs opacity-50 ml-2">({internalItems.length} in-app)</span>
           </div>
           <div className="glass-card divide-y divide-purple-900/30 max-h-96 overflow-y-auto">
-            {orderedList.map((item: any, i: number) => (
+            {internalItems.map((item: any, i: number) => (
               <motion.div
                 key={item.id || i}
                 className="ep-item"
-                onClick={() => playEpisode(item, epSource, item.id, i, orderedList)}
+                onClick={() => playEpisode(item, epSource, item.id, i, internalItems)}
                 variants={listItem}
                 initial="initial"
                 animate="animate"
@@ -318,12 +376,54 @@ export default function DetailPage() {
             ))}
           </div>
         </div>
-      ) : mode === 'manga' && (
+      )}
+
+      {externalItems.length > 0 && (
+        <div className="mb-6">
+          <div className="section-title">
+            <ExternalLink size={14} className="glow-text-pink" />
+            {mode === 'manga' ? 'External Chapters' : 'External Episodes'}
+            <span className="text-xs opacity-50 ml-2">({externalItems.length} — preview in app)</span>
+          </div>
+          <div className="glass-card divide-y divide-purple-900/30 max-h-72 overflow-y-auto">
+            {externalItems.map((item: any, i: number) => (
+              <motion.div
+                key={item.id || `ext-${i}`}
+                className="ep-item"
+                onClick={() => playEpisode(item, epSource, item.id, i, externalItems)}
+                variants={listItem}
+                initial="initial"
+                animate="animate"
+                transition={{ delay: Math.min(i * 0.02, 0.4) }}
+              >
+                <div className="w-8 h-8 rounded-lg bg-pink-900/30 flex items-center justify-center text-xs font-bold text-pink-400">
+                  {item.number || i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{item.title}</div>
+                  {item.site && <span className="text-xs opacity-50">{item.site}</span>}
+                </div>
+                <ExternalLink size={14} className="opacity-40" />
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {allItems.length === 0 && (
         <div className="glass-card p-6 text-center mb-6">
-          <p className="opacity-60 mb-3">Chapters loading from alternate source...</p>
-          <button className="action-btn primary" onClick={() => navigate(-1)}>
-            Go back and search ComicK source
-          </button>
+          <p className="opacity-60 mb-3">No chapters or episodes listed yet.</p>
+          {mode !== 'manga' && (
+            <button className="action-btn primary" onClick={findStreams} disabled={loadingAlts}>
+              <RefreshCw size={16} className={loadingAlts ? 'animate-spin' : ''} />
+              Search In-App Sources
+            </button>
+          )}
+          {mode === 'manga' && (
+            <button className="action-btn" onClick={() => navigate(`/?mode=manga&q=${encodeURIComponent(info.title)}`)}>
+              Search ComicK
+            </button>
+          )}
         </div>
       )}
 

@@ -7,6 +7,7 @@ import {
 import { fetchMangaChapter, getMangaDownloadUrl, getImageProxyUrl } from '../services/api'
 import { useToast } from '../components/Toast'
 import { useApp } from '../context/AppContext'
+import EmbedViewer from '../components/EmbedViewer'
 
 export default function ReaderPage() {
   const { source, mangaId } = useParams<{
@@ -29,6 +30,9 @@ export default function ReaderPage() {
   const chapter = searchParams.get('chapter') || ''
   const prevChapter = searchParams.get('prev')
   const nextChapter = searchParams.get('next')
+  const embedUrlParam = searchParams.get('embedUrl') || ''
+  const [embedUrl, setEmbedUrl] = useState(embedUrlParam)
+  const [useEmbed, setUseEmbed] = useState(false)
 
   const goChapter = (id: string, swap: 'prev' | 'next') => {
     const params = new URLSearchParams(searchParams)
@@ -74,8 +78,13 @@ export default function ReaderPage() {
     })
       .then((data) => {
         if (data.error) throw new Error(data.error)
+        if (data.externalUrl) {
+          setEmbedUrl(data.externalUrl)
+          setUseEmbed(true)
+          return
+        }
         if (!data.pages?.length) {
-          throw new Error('No pages — trying alternate sources...')
+          throw new Error('No pages found — try external preview or another source')
         }
         if (data.fallbackUsed) toast(`Loaded from ${data.provider} (in-app)`, 'success')
         const proxied = (data.pages || []).map((p: string) =>
@@ -122,6 +131,17 @@ export default function ReaderPage() {
     return () => window.removeEventListener('keydown', handler)
   }, [nextPage, prevPage, navigate])
 
+  if (useEmbed && embedUrl) {
+    return (
+      <EmbedViewer
+        url={embedUrl}
+        title={title}
+        subtitle={chapter ? `Chapter ${chapter}` : undefined}
+        onBack={() => navigate(-1)}
+      />
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -148,24 +168,39 @@ export default function ReaderPage() {
     return (
       <div className="text-center py-20">
         <p className="glow-text-pink mb-4">{error}</p>
-        <div className="flex gap-3 justify-center">
+        <div className="flex gap-3 justify-center flex-wrap">
           <button className="action-btn primary" onClick={() => {
-            const title = searchParams.get('title')
-            const chapter = searchParams.get('chapter')
-            if (title && chapter) {
-              setError('')
-              setLoading(true)
-              fetchMangaChapter(source!, mangaId!, chapterId!, { title, chapter })
-                .then((data) => {
-                  if (data.pages?.length) { setPages(data.pages); setError('') }
-                  else throw new Error('Still no pages')
-                })
-                .catch((e) => setError(e.message))
-                .finally(() => setLoading(false))
-            }
+            setError('')
+            setLoading(true)
+            fetchMangaChapter(source!, mangaId!, chapterId!, {
+              title: title || undefined,
+              chapter: chapter || undefined,
+            })
+              .then((data) => {
+                if (data.externalUrl) {
+                  setEmbedUrl(data.externalUrl)
+                  setUseEmbed(true)
+                  setError('')
+                  return
+                }
+                if (data.pages?.length) {
+                  const proxied = data.pages.map((p: string) =>
+                    getImageProxyUrl(p, source === 'comick' ? 'https://comick.io' : undefined)
+                  )
+                  setPages(proxied)
+                  setError('')
+                } else throw new Error('Still no pages')
+              })
+              .catch((e) => setError(e.message))
+              .finally(() => setLoading(false))
           }}>
-            <RefreshCw size={16} /> Try Fallback Sources
+            <RefreshCw size={16} /> Retry Sources
           </button>
+          {embedUrl && (
+            <button className="action-btn primary" onClick={() => setUseEmbed(true)}>
+              Preview Externally
+            </button>
+          )}
           <button className="action-btn" onClick={() => navigate(-1)}>
             <ArrowLeft size={16} /> Go Back
           </button>

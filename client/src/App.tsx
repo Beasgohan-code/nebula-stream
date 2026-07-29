@@ -13,6 +13,7 @@ import PlayerPage from './pages/PlayerPage'
 import LibraryPage from './pages/LibraryPage'
 import SettingsPage from './pages/SettingsPage'
 import AIPage from './pages/AIPage'
+import EmbedPage from './pages/EmbedPage'
 
 function BottomNav() {
   const location = useLocation()
@@ -20,8 +21,8 @@ function BottomNav() {
   const path = location.pathname
   const { queue } = useApp()
 
-  const isReader = path.startsWith('/read') || path.startsWith('/watch')
-  if (isReader) return null
+  const immersive = path.startsWith('/read') || path.startsWith('/watch') || path.startsWith('/embed')
+  if (immersive) return null
 
   const tabs = [
     { id: '/', icon: Home, label: 'Home' },
@@ -58,15 +59,19 @@ function BottomNav() {
 
 function AnimatedRoutes() {
   const location = useLocation()
-  const isReader = location.pathname.startsWith('/read') || location.pathname.startsWith('/watch')
+  const immersive =
+    location.pathname.startsWith('/read') ||
+    location.pathname.startsWith('/watch') ||
+    location.pathname.startsWith('/embed')
 
   return (
-    <div className={`app-container ${isReader ? '' : 'content-wrapper'}`}>
+    <div className={`app-container ${immersive ? '' : 'content-wrapper'}`}>
       <Routes location={location}>
         <Route path="/" element={<PageWrapper><HomePage /></PageWrapper>} />
         <Route path="/ai" element={<PageWrapper><AIPage /></PageWrapper>} />
         <Route path="/library" element={<PageWrapper><LibraryPage /></PageWrapper>} />
         <Route path="/settings" element={<PageWrapper><SettingsPage /></PageWrapper>} />
+        <Route path="/embed" element={<ImmersiveWrapper><EmbedPage /></ImmersiveWrapper>} />
         <Route path="/:mode/:source/:id" element={<PageWrapper><DetailPage /></PageWrapper>} />
         <Route path="/read/:source/:mangaId" element={<ImmersiveWrapper><ReaderPage /></ImmersiveWrapper>} />
         <Route path="/watch/:mode/:source/:episodeId" element={<ImmersiveWrapper><PlayerPage /></ImmersiveWrapper>} />

@@ -58,8 +58,8 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     name: 'NebulaStream API',
-    version: '5.0',
-    features: ['streaming', 'download', 'fallback', 'ai', 'cache', 'autoresolve'],
+    version: '5.1',
+    features: ['streaming', 'download', 'fallback', 'ai', 'cache', 'autoresolve', 'embed-preview'],
   });
 });
 

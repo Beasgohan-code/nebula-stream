@@ -137,3 +137,11 @@ export function getMangaDownloadUrl(source: string, mangaId: string, chapterId: 
 export function getVideoProxyUrl(url: string, download = false) {
   return `${API}/proxy?url=${encodeURIComponent(url)}${download ? '&download=1' : ''}`
 }
+
+/** In-app embed preview route for external watch/read URLs */
+export function getEmbedPath(url: string, title?: string, subtitle?: string) {
+  const params = new URLSearchParams({ url })
+  if (title) params.set('title', title)
+  if (subtitle) params.set('subtitle', subtitle)
+  return `/embed?${params}`
+}

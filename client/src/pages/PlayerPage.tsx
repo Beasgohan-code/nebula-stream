@@ -6,6 +6,7 @@ import { fetchAnimeEpisode, fetchSeriesEpisode, getVideoProxyUrl } from '../serv
 import { useToast } from '../components/Toast'
 import { useApp } from '../context/AppContext'
 import type { Mode } from '../context/AppContext'
+import EmbedViewer from '../components/EmbedViewer'
 
 export default function PlayerPage() {
   const { mode, source, episodeId } = useParams<{
@@ -33,6 +34,8 @@ export default function PlayerPage() {
   const ep = searchParams.get('ep') || ''
   const prevEp = searchParams.get('prev')
   const nextEp = searchParams.get('next')
+  const embedUrl = searchParams.get('embedUrl') || ''
+  const [useEmbed, setUseEmbed] = useState(Boolean(embedUrl))
 
   const goEpisode = (id: string, direction: 'prev' | 'next') => {
     const params = new URLSearchParams(searchParams)
@@ -193,6 +196,17 @@ export default function PlayerPage() {
     setTimeout(() => setDownloading(false), 2000)
   }
 
+  if (useEmbed && embedUrl) {
+    return (
+      <EmbedViewer
+        url={decodeURIComponent(embedUrl)}
+        title={title}
+        subtitle={ep ? `Episode ${ep}` : undefined}
+        onBack={() => navigate(-1)}
+      />
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-black gap-4">
@@ -212,12 +226,17 @@ export default function PlayerPage() {
     return (
       <div className="text-center py-20 bg-black min-h-screen px-4">
         <p className="glow-text-pink mb-2 text-lg">{error}</p>
-        <p className="text-sm opacity-50 mb-6">Auto-fallback will search HiAnime, AnimePahe, FlixHQ & more</p>
+        <p className="text-sm opacity-50 mb-6">Try alternate sources or preview externally in-app</p>
         <div className="flex gap-3 justify-center flex-wrap">
           <button className="action-btn primary" onClick={handleRetryFallback} disabled={retrying}>
             <RefreshCw size={16} className={retrying ? 'animate-spin' : ''} />
             Try All Sources
           </button>
+          {embedUrl && (
+            <button className="action-btn primary" onClick={() => setUseEmbed(true)}>
+              Preview in App
+            </button>
+          )}
           <button className="action-btn" onClick={() => navigate(-1)}>
             <ArrowLeft size={16} /> Go Back
           </button>
