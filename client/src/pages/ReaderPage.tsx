@@ -1,16 +1,19 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2, Download
+  ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2, Download, RefreshCw
 } from 'lucide-react'
 import { fetchMangaChapter, getMangaDownloadUrl } from '../services/api'
+import { useToast } from '../components/Toast'
 
 export default function ReaderPage() {
   const { source, mangaId, chapterId } = useParams<{
     source: string; mangaId: string; chapterId: string
   }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { toast } = useToast()
   const [pages, setPages] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -21,19 +24,23 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!source || !mangaId || !chapterId) return
     setLoading(true)
-    fetchMangaChapter(source, mangaId, chapterId)
+    const title = searchParams.get('title') || undefined
+    const chapter = searchParams.get('chapter') || undefined
+
+    fetchMangaChapter(source, mangaId, chapterId, { title, chapter })
       .then((data) => {
         if (data.error) throw new Error(data.error)
         if (data.externalUrl) {
           window.location.href = data.externalUrl
           return
         }
-        if (!data.pages?.length) throw new Error('No pages available — try another chapter')
+        if (!data.pages?.length) throw new Error('No pages — tap retry to try other sources')
+        if (data.fallbackUsed) toast(`Loaded from ${data.provider} (fallback)`, 'success')
         setPages(data.pages || [])
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [source, mangaId, chapterId])
+  }, [source, mangaId, chapterId, searchParams, toast])
 
   const nextPage = useCallback(() => {
     setCurrentPage((p) => Math.min(p + 1, pages.length - 1))
@@ -79,9 +86,28 @@ export default function ReaderPage() {
     return (
       <div className="text-center py-20">
         <p className="glow-text-pink mb-4">{error}</p>
-        <button className="action-btn" onClick={() => navigate(-1)}>
-          <ArrowLeft size={16} /> Go Back
-        </button>
+        <div className="flex gap-3 justify-center">
+          <button className="action-btn primary" onClick={() => {
+            const title = searchParams.get('title')
+            const chapter = searchParams.get('chapter')
+            if (title && chapter) {
+              setError('')
+              setLoading(true)
+              fetchMangaChapter(source!, mangaId!, chapterId!, { title, chapter })
+                .then((data) => {
+                  if (data.pages?.length) { setPages(data.pages); setError('') }
+                  else throw new Error('Still no pages')
+                })
+                .catch((e) => setError(e.message))
+                .finally(() => setLoading(false))
+            }
+          }}>
+            <RefreshCw size={16} /> Try Fallback Sources
+          </button>
+          <button className="action-btn" onClick={() => navigate(-1)}>
+            <ArrowLeft size={16} /> Go Back
+          </button>
+        </div>
       </div>
     )
   }

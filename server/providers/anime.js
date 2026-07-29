@@ -6,13 +6,12 @@ import {
 import {
   getAnimeStreamSources,
   searchAnimeStream,
-  searchAnimeStreamFallback,
   getAnimeStreamInfo,
   getAnimeStreamEpisode,
-  getAnimeStreamEpisodeFallback,
   ANIME_ORDER,
 } from './stream.js';
-import { mergeResults } from './fallback.js';
+import { mergeResults, withTimeout } from './fallback.js';
+import { findStreamSources } from './resolver.js';
 
 const STREAM_IDS = ANIME_ORDER;
 
@@ -56,15 +55,42 @@ export async function getAnimeInfo(source, id) {
   return getAniListInfo(id, 'ANIME');
 }
 
-export async function getAnimeEpisode(source, episodeId) {
+export async function getAnimeEpisode(source, episodeId, opts = {}) {
+  const { title, episodeNum, exclude = [] } = opts;
+
   if (STREAM_IDS.includes(source)) {
     try {
-      return await getAnimeStreamEpisode(source, episodeId);
+      const data = await withTimeout(getAnimeStreamEpisode(source, episodeId), 18000);
+      if (data.sources?.length) return { ...data, usedSource: source };
     } catch {
-      return getAnimeStreamEpisodeFallback(episodeId, [source, ...STREAM_IDS.filter((s) => s !== source)]);
+      // fall through to cross-provider fallback
     }
   }
-  return { sources: [], message: 'Select a streaming source (HiAnime, AnimePahe, etc.)' };
+
+  if (title && episodeNum) {
+    try {
+      const resolved = await findStreamSources('anime', title, episodeNum, [
+        ...exclude,
+        ...(STREAM_IDS.includes(source) ? [source] : []),
+      ]);
+      return resolved;
+    } catch {
+      // continue
+    }
+  }
+
+  if (STREAM_IDS.includes(source)) {
+    for (const alt of STREAM_IDS.filter((s) => s !== source)) {
+      try {
+        const data = await withTimeout(getAnimeStreamEpisode(alt, episodeId), 12000);
+        if (data.sources?.length) return { ...data, usedSource: alt, fallbackUsed: true };
+      } catch {
+        // try next
+      }
+    }
+  }
+
+  return { sources: [], message: 'No stream found. Try alternate sources below.' };
 }
 
 export async function getTrendingAnime(limit = 20) {

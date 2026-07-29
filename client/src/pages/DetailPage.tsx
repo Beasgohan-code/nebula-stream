@@ -3,25 +3,35 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Bookmark, BookmarkCheck, Play, BookOpen,
-  Star, Tag, ChevronRight
+  Star, Tag, ChevronRight, RefreshCw, Sparkles, Layers
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { useToast } from '../components/Toast'
 import {
-  fetchMangaInfo, fetchAnimeInfo, fetchSeriesInfo
+  fetchMangaInfo, fetchAnimeInfo, fetchSeriesInfo,
+  fetchAlternateSources, fetchSimilar, fetchAISummary
 } from '../services/api'
 
 export default function DetailPage() {
   const { mode, source, id } = useParams<{ mode: string; source: string; id: string }>()
   const navigate = useNavigate()
   const { isBookmarked, addBookmark, removeBookmark, addHistory } = useApp()
+  const { toast } = useToast()
   const [info, setInfo] = useState<any>(null)
+  const [alternates, setAlternates] = useState<any[]>([])
+  const [similar, setSimilar] = useState<any[]>([])
+  const [aiSummary, setAiSummary] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingAlts, setLoadingAlts] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!mode || !source || !id) return
     setLoading(true)
     setError('')
+    setAlternates([])
+    setSimilar([])
+    setAiSummary('')
 
     const fetcher =
       mode === 'manga' ? fetchMangaInfo :
@@ -29,17 +39,38 @@ export default function DetailPage() {
       fetchSeriesInfo
 
     fetcher(source, id)
-      .then((data) => {
+      .then(async (data) => {
         if (data.error) throw new Error(data.error)
         setInfo(data)
         addHistory({
           id, title: data.title, image: data.image,
           source, mode: mode as any, visitedAt: Date.now(),
         })
+
+        if (source === 'anilist' && id) {
+          fetchSimilar(id).then(setSimilar).catch(() => {})
+        }
+
+        fetchAISummary(data.title, mode).then((s) => setAiSummary(s.summary)).catch(() => {})
       })
       .catch((e) => setError(e.message || 'Failed to load'))
       .finally(() => setLoading(false))
   }, [mode, source, id, addHistory])
+
+  const findStreams = async () => {
+    if (!info?.title) return
+    setLoadingAlts(true)
+    try {
+      const alts = await fetchAlternateSources(info.title, mode || 'anime')
+      setAlternates(alts)
+      if (alts.length) toast(`Found ${alts.length} streaming sources!`, 'success')
+      else toast('No streams found — try again later', 'error')
+    } catch {
+      toast('Could not find alternate sources', 'error')
+    } finally {
+      setLoadingAlts(false)
+    }
+  }
 
   const bookmarked = id && source ? isBookmarked(id, source) : false
 
@@ -47,6 +78,18 @@ export default function DetailPage() {
     if (!info || !id || !source || !mode) return
     if (bookmarked) removeBookmark(id, source)
     else addBookmark({ id, title: info.title, image: info.image, source, mode: mode as any, addedAt: Date.now() })
+    toast(bookmarked ? 'Removed from library' : 'Saved to library', 'success')
+  }
+
+  const playEpisode = (item: any, epSource: string, epId: string) => {
+    if (mode === 'manga') {
+      if (item.externalUrl) window.open(item.externalUrl, '_blank')
+      else navigate(`/read/${epSource}/${id}/${item.id}?title=${encodeURIComponent(info.title)}&chapter=${item.number}`)
+    } else if (item.url) {
+      window.open(item.url, '_blank')
+    } else {
+      navigate(`/watch/${mode}/${epSource}/${epId}?title=${encodeURIComponent(info.title)}&ep=${item.number || item.id}`)
+    }
   }
 
   if (loading) {
@@ -72,33 +115,22 @@ export default function DetailPage() {
   const chapters = info.chapters || []
   const episodes = info.episodes || []
   const list = chapters.length ? chapters : (Array.isArray(episodes) ? episodes : [])
+  const epSource = source || alternates[0]?.source || 'hianime'
 
   return (
-    <motion.div
-      className="fade-in pb-8"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      <button
-        className="action-btn mb-5"
-        onClick={() => navigate('/')}
-      >
+    <motion.div className="fade-in pb-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <button className="action-btn mb-5" onClick={() => navigate('/')}>
         <ArrowLeft size={16} /> Back
       </button>
 
-      {/* Hero */}
       <div className="glass-card overflow-hidden mb-6">
         <div className="flex flex-col md:flex-row gap-6 p-5">
           <div className="flex-shrink-0 mx-auto md:mx-0">
             {info.image ? (
-              <motion.img
-                src={info.image}
-                alt={info.title}
+              <motion.img src={info.image} alt={info.title}
                 className="w-40 md:w-48 rounded-xl object-cover"
                 style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-              />
+                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} />
             ) : (
               <div className="w-40 h-60 shimmer rounded-xl" />
             )}
@@ -118,7 +150,16 @@ export default function DetailPage() {
               )}
             </div>
 
-            {info.description && (
+            {aiSummary && (
+              <div className="glass-card p-3 mb-4 text-sm opacity-80 leading-relaxed">
+                <div className="flex items-center gap-2 mb-2 text-xs glow-text-purple">
+                  <Sparkles size={12} /> AI Summary
+                </div>
+                {aiSummary.split('**').map((part, j) => j % 2 === 1 ? <strong key={j}>{part}</strong> : part)}
+              </div>
+            )}
+
+            {!aiSummary && info.description && (
               <p className="text-sm opacity-70 leading-relaxed mb-4 line-clamp-4">
                 {info.description.replace(/<[^>]*>/g, '')}
               </p>
@@ -140,19 +181,15 @@ export default function DetailPage() {
                 {bookmarked ? 'Saved' : 'Save'}
               </button>
               {list.length > 0 && (
-                <button
-                  className="action-btn"
-                  onClick={() => {
-                    const first = list[0]
-                    if (mode === 'manga') {
-                      navigate(`/read/${source}/${id}/${first.id}`)
-                    } else {
-                      navigate(`/watch/${mode}/${source}/${first.id}`)
-                    }
-                  }}
-                >
+                <button className="action-btn" onClick={() => playEpisode(list[0], epSource, list[0].id)}>
                   {mode === 'manga' ? <BookOpen size={16} /> : <Play size={16} />}
                   {mode === 'manga' ? 'Start Reading' : 'Start Watching'}
+                </button>
+              )}
+              {mode !== 'manga' && (
+                <button className="action-btn" onClick={findStreams} disabled={loadingAlts}>
+                  <RefreshCw size={16} className={loadingAlts ? 'animate-spin' : ''} />
+                  Find Streams
                 </button>
               )}
             </div>
@@ -160,43 +197,67 @@ export default function DetailPage() {
         </div>
       </div>
 
-      {/* Chapter/Episode list */}
+      {alternates.length > 0 && (
+        <div className="mb-6">
+          <div className="section-title">
+            <Layers size={14} className="glow-text-cyan" />
+            Available Streams ({alternates.length})
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {alternates.map((alt) => (
+              <motion.div key={alt.source}
+                className="glass-card p-3 flex-shrink-0 cursor-pointer min-w-[140px]"
+                onClick={() => navigate(`/${mode}/${alt.source}/${alt.id}`)}
+                whileHover={{ scale: 1.05 }}>
+                <p className="text-sm font-bold">{alt.sourceName}</p>
+                <p className="text-xs opacity-50 mt-1">Tap to open</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {list.length > 0 && (
-        <div>
+        <div className="mb-6">
           <div className="section-title">
             {mode === 'manga' ? 'Chapters' : 'Episodes'}
             <span className="text-xs opacity-50 ml-2">({list.length})</span>
           </div>
           <div className="glass-card divide-y divide-purple-900/30 max-h-96 overflow-y-auto">
             {(mode === 'manga' ? [...list].reverse() : list).map((item: any, i: number) => (
-              <motion.div
-                key={item.id || i}
-                className="ep-item"
-                onClick={() => {
-                  if (mode === 'manga') {
-                    if (item.externalUrl) {
-                      window.open(item.externalUrl, '_blank')
-                    } else {
-                      navigate(`/read/${source}/${id}/${item.id}`)
-                    }
-                  } else if (item.url) {
-                    window.open(item.url, '_blank')
-                  } else {
-                    navigate(`/watch/${mode}/${source}/${item.id}`)
-                  }
-                }}
-                whileHover={{ x: 4 }}
-              >
+              <motion.div key={item.id || i} className="ep-item"
+                onClick={() => playEpisode(item, epSource, item.id)}
+                whileHover={{ x: 4 }}>
                 <div className="w-8 h-8 rounded-lg bg-purple-900/40 flex items-center justify-center text-xs font-bold text-cyan-400">
                   {item.number || i + 1}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold truncate">{item.title}</div>
                   {item.externalUrl && <span className="text-xs text-cyan-400">External ↗</span>}
-                  {item.site && <span className="text-xs text-cyan-400">{item.site} ↗</span>}
+                  {item.readable === false && <span className="text-xs text-orange-400">External</span>}
                   {item.isFiller && <span className="text-xs text-orange-400">Filler</span>}
                 </div>
                 <ChevronRight size={16} className="opacity-30" />
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {similar.length > 0 && (
+        <div>
+          <div className="section-title">
+            <Sparkles size={14} className="glow-text-pink" />
+            Similar Titles
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {similar.map((s) => (
+              <motion.div key={s.id} className="glass-card p-2 cursor-pointer"
+                onClick={() => navigate(`/${s.mode || mode}/${s.source}/${s.id}`)}
+                whileHover={{ scale: 1.03 }}>
+                {s.image && <img src={s.image} alt={s.title} className="w-full h-28 object-cover rounded-lg mb-2" />}
+                <p className="text-xs font-semibold truncate">{s.title}</p>
+                {s.score && <p className="text-xs text-yellow-400">★ {s.score}</p>}
               </motion.div>
             ))}
           </div>
@@ -213,12 +274,6 @@ export default function DetailPage() {
               </a>
             ))}
           </div>
-        </div>
-      )}
-
-      {info.streamable === false && !info.streamingLinks?.length && (
-        <div className="glass-card p-4 mt-4 text-center text-sm opacity-60">
-          Metadata from MyAnimeList. Select a streamable source from search for playback.
         </div>
       )}
     </motion.div>

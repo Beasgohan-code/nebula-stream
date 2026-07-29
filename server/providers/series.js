@@ -8,10 +8,10 @@ import {
   searchMovieStream,
   getMovieStreamInfo,
   getMovieStreamEpisode,
-  getMovieStreamEpisodeFallback,
   MOVIE_ORDER,
 } from './stream.js';
-import { mergeResults } from './fallback.js';
+import { mergeResults, withTimeout } from './fallback.js';
+import { findStreamSources } from './resolver.js';
 
 const STREAM_IDS = MOVIE_ORDER;
 
@@ -55,15 +55,39 @@ export async function getSeriesInfo(source, id) {
   return getAniListInfo(id, 'ANIME');
 }
 
-export async function getSeriesEpisode(source, episodeId) {
+export async function getSeriesEpisode(source, episodeId, opts = {}) {
+  const { title, episodeNum, exclude = [] } = opts;
+
   if (STREAM_IDS.includes(source)) {
     try {
-      return await getMovieStreamEpisode(source, episodeId);
+      const data = await withTimeout(getMovieStreamEpisode(source, episodeId), 18000);
+      if (data.sources?.length) return { ...data, usedSource: source };
     } catch {
-      return getMovieStreamEpisodeFallback(episodeId, [source, ...STREAM_IDS.filter((s) => s !== source)]);
+      // fall through
     }
   }
-  return { sources: [], message: 'Select a streaming source (FlixHQ, SFlix, etc.)' };
+
+  if (title && episodeNum) {
+    try {
+      return await findStreamSources('series', title, episodeNum, [
+        ...exclude,
+        ...(STREAM_IDS.includes(source) ? [source] : []),
+      ]);
+    } catch {
+      // continue
+    }
+  }
+
+  for (const alt of STREAM_IDS.filter((s) => s !== source)) {
+    try {
+      const data = await withTimeout(getMovieStreamEpisode(alt, episodeId), 12000);
+      if (data.sources?.length) return { ...data, usedSource: alt, fallbackUsed: true };
+    } catch {
+      // try next
+    }
+  }
+
+  return { sources: [], message: 'No stream found. Try alternate sources.' };
 }
 
 export async function getTrendingSeries(limit = 20) {

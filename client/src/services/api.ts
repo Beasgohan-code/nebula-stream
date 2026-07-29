@@ -27,8 +27,15 @@ export async function fetchMangaInfo(source: string, id: string) {
   return res.json()
 }
 
-export async function fetchMangaChapter(source: string, id: string, chapterId: string) {
-  const res = await fetch(`${API}/manga/${source}/${id}/chapter/${chapterId}`)
+export async function fetchMangaChapter(
+  source: string, id: string, chapterId: string,
+  opts?: { title?: string; chapter?: string }
+) {
+  const params = new URLSearchParams()
+  if (opts?.title) params.set('title', opts.title)
+  if (opts?.chapter) params.set('chapter', opts.chapter)
+  const qs = params.toString() ? `?${params}` : ''
+  const res = await fetch(`${API}/manga/${source}/${id}/chapter/${chapterId}${qs}`)
   return res.json()
 }
 
@@ -37,8 +44,16 @@ export async function fetchAnimeInfo(source: string, id: string) {
   return res.json()
 }
 
-export async function fetchAnimeEpisode(source: string, episodeId: string) {
-  const res = await fetch(`${API}/anime/${source}/watch/${episodeId}`)
+export async function fetchAnimeEpisode(
+  source: string, episodeId: string,
+  opts?: { title?: string; ep?: string; exclude?: string }
+) {
+  const params = new URLSearchParams()
+  if (opts?.title) params.set('title', opts.title)
+  if (opts?.ep) params.set('ep', opts.ep)
+  if (opts?.exclude) params.set('exclude', opts.exclude)
+  const qs = params.toString() ? `?${params}` : ''
+  const res = await fetch(`${API}/anime/${source}/watch/${episodeId}${qs}`)
   return res.json()
 }
 
@@ -47,8 +62,45 @@ export async function fetchSeriesInfo(source: string, id: string) {
   return res.json()
 }
 
-export async function fetchSeriesEpisode(source: string, episodeId: string) {
-  const res = await fetch(`${API}/series/${source}/watch/${episodeId}`)
+export async function fetchSeriesEpisode(
+  source: string, episodeId: string,
+  opts?: { title?: string; ep?: string; exclude?: string }
+) {
+  const params = new URLSearchParams()
+  if (opts?.title) params.set('title', opts.title)
+  if (opts?.ep) params.set('ep', opts.ep)
+  if (opts?.exclude) params.set('exclude', opts.exclude)
+  const qs = params.toString() ? `?${params}` : ''
+  const res = await fetch(`${API}/series/${source}/watch/${episodeId}${qs}`)
+  return res.json()
+}
+
+export async function fetchAlternateSources(title: string, mode: string) {
+  const res = await fetch(`${API}/resolve/sources?title=${encodeURIComponent(title)}&mode=${mode}`)
+  return res.json()
+}
+
+export async function fetchSimilar(id: string) {
+  const res = await fetch(`${API}/ai/similar/${id}`)
+  return res.json()
+}
+
+export async function fetchAISummary(title: string, mode: string) {
+  const res = await fetch(`${API}/ai/summary?title=${encodeURIComponent(title)}&mode=${mode}`)
+  return res.json()
+}
+
+export async function aiChat(message: string, mode: string, history: any[]) {
+  const res = await fetch(`${API}/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, mode, history }),
+  })
+  return res.json()
+}
+
+export async function fetchAIRecommend(mode: string, history: any[]) {
+  const res = await fetch(`${API}/ai/recommend?mode=${mode}&history=${encodeURIComponent(JSON.stringify(history))}`)
   return res.json()
 }
 

@@ -55,11 +55,11 @@ export default function SettingsPage() {
             <li>• Download anime/series episodes</li>
             <li>• Bookmarks & watch history</li>
             <li>• Source filtering & quick search tags</li>
-            <li>• Auto-fallback across sources when one fails</li>
-            <li>• Discover random content with shuffle button</li>
-            <li>• Continue watching/reading from history</li>
-            <li>• Recent search history</li>
-            <li>• Subtitle track support in player</li>
+            <li>• Nebula AI assistant — recommendations & search</li>
+            <li>• Auto-fallback across 20+ sources with retry</li>
+            <li>• Find Streams button on detail pages</li>
+            <li>• AI summaries & similar title suggestions</li>
+            <li>• Toast notifications for source switches</li>
             <li>• Mobile-responsive design</li>
           </ul>
         </motion.div>

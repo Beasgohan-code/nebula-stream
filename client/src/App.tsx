@@ -1,6 +1,7 @@
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
-import { Home, Library, Settings } from 'lucide-react'
+import { Home, Library, Settings, Bot } from 'lucide-react'
 import { AppProvider } from './context/AppContext'
+import { ToastProvider } from './components/Toast'
 import Particles from './components/Particles'
 import HomePage from './pages/HomePage'
 import DetailPage from './pages/DetailPage'
@@ -8,6 +9,7 @@ import ReaderPage from './pages/ReaderPage'
 import PlayerPage from './pages/PlayerPage'
 import LibraryPage from './pages/LibraryPage'
 import SettingsPage from './pages/SettingsPage'
+import AIPage from './pages/AIPage'
 
 function BottomNav() {
   const location = useLocation()
@@ -19,6 +21,7 @@ function BottomNav() {
 
   const tabs = [
     { id: '/', icon: Home, label: 'Home' },
+    { id: '/ai', icon: Bot, label: 'AI' },
     { id: '/library', icon: Library, label: 'Library' },
     { id: '/settings', icon: Settings, label: 'Settings' },
   ]
@@ -54,6 +57,7 @@ function AppLayout() {
       <div className={`app-container ${isReader ? '' : 'content-wrapper'}`}>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/ai" element={<AIPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/:mode/:source/:id" element={<DetailPage />} />
@@ -69,7 +73,9 @@ function AppLayout() {
 export default function App() {
   return (
     <AppProvider>
-      <AppLayout />
+      <ToastProvider>
+        <AppLayout />
+      </ToastProvider>
     </AppProvider>
   )
 }

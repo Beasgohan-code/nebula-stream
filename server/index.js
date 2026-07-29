@@ -24,6 +24,8 @@ import {
   SERIES_SOURCES,
 } from './providers/series.js';
 import { downloadMangaChapter, proxyStream } from './providers/download.js';
+import { findAlternateSources, resolveMangaChapter } from './providers/resolver.js';
+import { aiChat, getAIRecommendations, getSimilarTitles, getAISummary } from './providers/ai.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -35,8 +37,8 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     name: 'NebulaStream API',
-    version: '2.0',
-    features: ['streaming', 'download', 'fallback'],
+    version: '3.0',
+    features: ['streaming', 'download', 'fallback', 'ai'],
   });
 });
 
@@ -107,11 +109,18 @@ app.get('/api/manga/:source/:id', async (req, res) => {
 
 app.get('/api/manga/:source/:id/chapter/:chapterId', async (req, res) => {
   try {
-    const data = await getMangaChapter(
+    let data = await getMangaChapter(
       req.params.source,
       req.params.id,
       req.params.chapterId
     );
+    if ((!data.pages?.length || data.error) && req.query.title && req.query.chapter) {
+      data = await resolveMangaChapter(
+        req.query.title,
+        req.query.chapter,
+        [req.params.source]
+      );
+    }
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -129,7 +138,11 @@ app.get('/api/anime/:source/:id', async (req, res) => {
 
 app.get('/api/anime/:source/watch/:episodeId', async (req, res) => {
   try {
-    const data = await getAnimeEpisode(req.params.source, req.params.episodeId);
+    const data = await getAnimeEpisode(req.params.source, req.params.episodeId, {
+      title: req.query.title,
+      episodeNum: req.query.ep,
+      exclude: req.query.exclude?.split(',') || [],
+    });
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -147,7 +160,64 @@ app.get('/api/series/:source/:id', async (req, res) => {
 
 app.get('/api/series/:source/watch/:episodeId', async (req, res) => {
   try {
-    const data = await getSeriesEpisode(req.params.source, req.params.episodeId);
+    const data = await getSeriesEpisode(req.params.source, req.params.episodeId, {
+      title: req.query.title,
+      episodeNum: req.query.ep,
+      exclude: req.query.exclude?.split(',') || [],
+    });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/resolve/sources', async (req, res) => {
+  try {
+    const { title, mode = 'anime' } = req.query;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    const sources = await findAlternateSources(mode, title);
+    res.json(sources);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const { message, mode, history, lastTitle } = req.body;
+    if (!message) return res.status(400).json({ error: 'message required' });
+    const response = await aiChat(message, { mode, history, lastTitle });
+    res.json(response);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ai/recommend', async (req, res) => {
+  try {
+    const mode = req.query.mode || 'anime';
+    const history = req.query.history ? JSON.parse(req.query.history) : [];
+    const data = await getAIRecommendations(history, mode);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ai/similar/:id', async (req, res) => {
+  try {
+    const data = await getSimilarTitles(req.params.id);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ai/summary', async (req, res) => {
+  try {
+    const { title, mode = 'anime' } = req.query;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    const data = await getAISummary(title, mode);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
