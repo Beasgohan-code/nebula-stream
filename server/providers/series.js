@@ -8,9 +8,12 @@ import {
   searchMovieStream,
   getMovieStreamInfo,
   getMovieStreamEpisode,
+  getMovieStreamEpisodeFallback,
+  MOVIE_ORDER,
 } from './stream.js';
+import { mergeResults } from './fallback.js';
 
-const STREAM_IDS = ['flixhq', 'sflix', 'dramacool', 'himovies'];
+const STREAM_IDS = MOVIE_ORDER;
 
 const SERIES_SOURCES = [
   { id: 'anilist', name: 'AniList', color: '#02A9FF' },
@@ -18,38 +21,48 @@ const SERIES_SOURCES = [
 ];
 
 export async function searchSeries(query, source = 'all', limit = 24) {
-  const tasks = [];
-
-  if (source === 'all' || source === 'anilist') {
-    tasks.push(searchAniList(query, limit, 'ANIME').catch(() => []));
+  if (source !== 'all' && source !== 'anilist' && STREAM_IDS.includes(source)) {
+    try {
+      return await searchMovieStream(source, query, limit);
+    } catch {
+      return [];
+    }
   }
 
-  const streamSources = source === 'all' ? STREAM_IDS : STREAM_IDS.includes(source) ? [source] : [];
-  for (const s of streamSources) {
-    tasks.push(
-      searchMovieStream(s, query, Math.ceil(limit / streamSources.length)).catch(() => [])
-    );
+  if (source === 'anilist') {
+    return searchAniList(query, limit, 'ANIME').catch(() => []);
   }
 
-  const results = await Promise.all(tasks);
-  const merged = results.flat();
-  const seen = new Set();
-  return merged.filter((s) => {
-    const key = s.title?.toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, limit);
+  const tasks = [
+    searchAniList(query, Math.min(12, limit), 'ANIME').catch(() => []),
+    ...STREAM_IDS.map((s) =>
+      searchMovieStream(s, query, 4).catch(() => [])
+    ),
+  ];
+
+  return mergeResults(tasks, limit);
 }
 
 export async function getSeriesInfo(source, id) {
   if (source === 'anilist') return getAniListInfo(id, 'ANIME');
-  if (STREAM_IDS.includes(source)) return getMovieStreamInfo(source, id);
+  if (STREAM_IDS.includes(source)) {
+    try {
+      return await getMovieStreamInfo(source, id);
+    } catch {
+      return getAniListInfo(id, 'ANIME');
+    }
+  }
   return getAniListInfo(id, 'ANIME');
 }
 
 export async function getSeriesEpisode(source, episodeId) {
-  if (STREAM_IDS.includes(source)) return getMovieStreamEpisode(source, episodeId);
+  if (STREAM_IDS.includes(source)) {
+    try {
+      return await getMovieStreamEpisode(source, episodeId);
+    } catch {
+      return getMovieStreamEpisodeFallback(episodeId, [source, ...STREAM_IDS.filter((s) => s !== source)]);
+    }
+  }
   return { sources: [], message: 'Select a streaming source (FlixHQ, SFlix, etc.)' };
 }
 

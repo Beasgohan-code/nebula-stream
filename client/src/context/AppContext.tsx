@@ -15,6 +15,9 @@ interface AppState {
   history: HistoryItem[]
   addHistory: (h: HistoryItem) => void
   clearHistory: () => void
+  recentSearches: string[]
+  addRecentSearch: (q: string) => void
+  clearRecentSearches: () => void
 }
 
 export interface Bookmark {
@@ -47,6 +50,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try { return JSON.parse(localStorage.getItem('ns-history') || '[]') } catch { return [] }
   })
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('ns-recent-searches') || '[]') } catch { return [] }
+  })
 
   useEffect(() => {
     localStorage.setItem('ns-bookmarks', JSON.stringify(bookmarks))
@@ -55,6 +61,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem('ns-history', JSON.stringify(history.slice(0, 50)))
   }, [history])
+
+  useEffect(() => {
+    localStorage.setItem('ns-recent-searches', JSON.stringify(recentSearches.slice(0, 10)))
+  }, [recentSearches])
 
   const addBookmark = (b: Bookmark) => {
     setBookmarks((prev) => {
@@ -76,11 +86,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const clearHistory = () => setHistory([])
 
+  const addRecentSearch = (q: string) => {
+    const trimmed = q.trim()
+    if (!trimmed) return
+    setRecentSearches((prev) => [trimmed, ...prev.filter((x) => x.toLowerCase() !== trimmed.toLowerCase())].slice(0, 10))
+  }
+
+  const clearRecentSearches = () => setRecentSearches([])
+
   return (
     <AppContext.Provider value={{
       mode, setMode, source, setSource,
       bookmarks, addBookmark, removeBookmark, isBookmarked,
       history, addHistory, clearHistory,
+      recentSearches, addRecentSearch, clearRecentSearches,
     }}>
       {children}
     </AppContext.Provider>

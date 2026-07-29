@@ -14,6 +14,7 @@ export default function PlayerPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<any>(null)
   const [sources, setSources] = useState<{ url: string; quality: string; isM3U8?: boolean }[]>([])
+  const [subtitles, setSubtitles] = useState<{ url: string; lang: string }[]>([])
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
   const [currentSource, setCurrentSource] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -32,6 +33,7 @@ export default function PlayerPage() {
         if (data.error) throw new Error(data.error)
         const srcs = data.sources || []
         setSources(srcs)
+        setSubtitles(data.subtitles || [])
         setDownloadUrl(data.download || srcs[0]?.url || null)
         if (!srcs.length) throw new Error(data.message || 'No stream sources available')
       })
@@ -156,15 +158,34 @@ export default function PlayerPage() {
         )}
       </AnimatePresence>
 
-      <div className="flex items-center justify-center min-h-screen p-4 pt-16">
-        <div className="video-container w-full max-w-5xl">
-          <video
-            ref={videoRef}
-            controls
-            autoPlay
-            className="w-full h-full"
-            onClick={(e) => e.stopPropagation()}
-          />
+      <div className="flex items-center justify-center min-h-screen p-4 pt-16 pb-8">
+        <div className="w-full max-w-5xl">
+          <div className="video-container w-full">
+            <video
+              ref={videoRef}
+              controls
+              autoPlay
+              className="w-full h-full"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          {subtitles.length > 0 && (
+            <div className="flex gap-2 mt-3 flex-wrap">
+              <span className="text-xs opacity-50">Subtitles:</span>
+              {subtitles.map((sub, i) => (
+                <a
+                  key={i}
+                  href={getVideoProxyUrl(sub.url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="source-chip text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {sub.lang || `Track ${i + 1}`}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

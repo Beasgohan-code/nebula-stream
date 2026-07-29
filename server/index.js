@@ -32,7 +32,27 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', name: 'NebulaStream API' });
+  res.json({
+    status: 'ok',
+    name: 'NebulaStream API',
+    version: '2.0',
+    features: ['streaming', 'download', 'fallback'],
+  });
+});
+
+app.get('/api/discover', async (req, res) => {
+  try {
+    const mode = req.query.mode || 'anime';
+    const limit = parseInt(req.query.limit) || 12;
+    let data;
+    if (mode === 'manga') data = await getTrendingManga(limit);
+    else if (mode === 'series') data = await getTrendingSeries(limit);
+    else data = await getTrendingAnime(limit);
+    const shuffled = data.sort(() => Math.random() - 0.5).slice(0, limit);
+    res.json(shuffled);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/sources', (req, res) => {

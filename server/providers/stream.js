@@ -1,4 +1,5 @@
 import { ANIME, MOVIES } from '@consumet/extensions';
+import { withFallback } from './fallback.js';
 
 const ANIME_PROVIDERS = {
   hianime: { cls: ANIME.Hianime, name: 'HiAnime', color: '#ef476f' },
@@ -6,6 +7,8 @@ const ANIME_PROVIDERS = {
   animekai: { cls: ANIME.AnimeKai, name: 'AnimeKai', color: '#8338ec' },
   kickassanime: { cls: ANIME.KickAssAnime, name: 'KickAssAnime', color: '#ff006e' },
   animesaturn: { cls: ANIME.AnimeSaturn, name: 'AnimeSaturn', color: '#06d6a0' },
+  animeunity: { cls: ANIME.AnimeUnity, name: 'AnimeUnity', color: '#ffd166' },
+  animesama: { cls: ANIME.AnimeSama, name: 'AnimeSama', color: '#06ffa5' },
 };
 
 const MOVIE_PROVIDERS = {
@@ -13,15 +16,19 @@ const MOVIE_PROVIDERS = {
   sflix: { cls: MOVIES.SFlix, name: 'SFlix', color: '#457b9d' },
   dramacool: { cls: MOVIES.DramaCool, name: 'DramaCool', color: '#2a9d8f' },
   himovies: { cls: MOVIES.HiMovies, name: 'HiMovies', color: '#e9c46a' },
+  goku: { cls: MOVIES.Goku, name: 'Goku', color: '#f4a261' },
 };
 
+const ANIME_ORDER = Object.keys(ANIME_PROVIDERS);
+const MOVIE_ORDER = Object.keys(MOVIE_PROVIDERS);
 const instances = new Map();
 
 function getProvider(map, id) {
   const cfg = map[id];
   if (!cfg) return null;
-  if (!instances.has(id)) instances.set(id, new cfg.cls());
-  return instances.get(id);
+  const key = `${id}`;
+  if (!instances.has(key)) instances.set(key, new cfg.cls());
+  return { instance: instances.get(key), cfg };
 }
 
 export function getAnimeStreamSources() {
@@ -39,30 +46,36 @@ export function getMovieStreamSources() {
 export async function searchAnimeStream(provider, query, limit = 20) {
   const p = getProvider(ANIME_PROVIDERS, provider);
   if (!p) return [];
-  const data = await p.search(query);
-  const cfg = ANIME_PROVIDERS[provider];
+  const data = await p.instance.search(query);
   return (data.results || []).slice(0, limit).map((a) => ({
     id: a.id,
     title: a.title,
     image: a.image,
     source: provider,
-    sourceName: cfg.name,
+    sourceName: p.cfg.name,
     type: 'streamable',
     subOrDub: a.subOrDub,
   }));
 }
 
+export async function searchAnimeStreamFallback(query, limit = 20) {
+  const { result } = await withFallback(ANIME_ORDER, async (provider) => {
+    const items = await searchAnimeStream(provider, query, limit);
+    return items.length ? items : null;
+  }, 'anime search');
+  return result;
+}
+
 export async function getAnimeStreamInfo(provider, id) {
   const p = getProvider(ANIME_PROVIDERS, provider);
   if (!p) throw new Error('Unknown provider');
-  const cfg = ANIME_PROVIDERS[provider];
-  const info = await p.fetchAnimeInfo(id);
+  const info = await p.instance.fetchAnimeInfo(id);
   return {
     id: info.id || id,
     title: info.title,
     image: info.image,
     source: provider,
-    sourceName: cfg.name,
+    sourceName: p.cfg.name,
     description: info.description || '',
     genres: info.genres || [],
     status: info.status,
@@ -77,10 +90,17 @@ export async function getAnimeStreamInfo(provider, id) {
   };
 }
 
-export async function getAnimeStreamEpisode(provider, episodeId) {
+export async function getAnimeStreamEpisode(provider, episodeId, server) {
   const p = getProvider(ANIME_PROVIDERS, provider);
   if (!p) throw new Error('Unknown provider');
-  const data = await p.fetchEpisodeSources(episodeId);
+
+  let data;
+  if (server && p.instance.fetchEpisodeSources.length > 1) {
+    data = await p.instance.fetchEpisodeSources(episodeId, server);
+  } else {
+    data = await p.instance.fetchEpisodeSources(episodeId);
+  }
+
   return {
     sources: (data.sources || []).map((s) => ({
       url: s.url,
@@ -89,42 +109,62 @@ export async function getAnimeStreamEpisode(provider, episodeId) {
     })),
     subtitles: (data.subtitles || []).map((s) => ({
       url: s.url,
-      lang: s.lang,
+      lang: s.lang || s.language,
     })),
     intro: data.intro,
     outro: data.outro,
-    download: data.download || null,
+    download: data.download || data.sources?.[0]?.url || null,
+    headers: data.headers || null,
   };
+}
+
+export async function getAnimeStreamEpisodeFallback(episodeId, providers = ANIME_ORDER) {
+  const errors = [];
+  for (const provider of providers) {
+    try {
+      const data = await getAnimeStreamEpisode(provider, episodeId);
+      if (data.sources?.length) return { ...data, provider };
+    } catch (err) {
+      errors.push({ provider, error: err.message });
+    }
+  }
+  throw new Error('No streaming source available. Try another episode or source.');
 }
 
 export async function searchMovieStream(provider, query, limit = 20) {
   const p = getProvider(MOVIE_PROVIDERS, provider);
   if (!p) return [];
-  const data = await p.search(query);
-  const cfg = MOVIE_PROVIDERS[provider];
+  const data = await p.instance.search(query);
   return (data.results || []).slice(0, limit).map((s) => ({
     id: s.id,
     title: s.title,
     image: s.image || s.poster,
     source: provider,
-    sourceName: cfg.name,
+    sourceName: p.cfg.name,
     type: 'streamable',
     year: s.releaseDate,
   }));
 }
 
+export async function searchMovieStreamFallback(query, limit = 20) {
+  const { result } = await withFallback(MOVIE_ORDER, async (provider) => {
+    const items = await searchMovieStream(provider, query, limit);
+    return items.length ? items : null;
+  }, 'series search');
+  return result;
+}
+
 export async function getMovieStreamInfo(provider, id) {
   const p = getProvider(MOVIE_PROVIDERS, provider);
   if (!p) throw new Error('Unknown provider');
-  const cfg = MOVIE_PROVIDERS[provider];
-  const info = await p.fetchMediaInfo(id);
+  const info = await p.instance.fetchMediaInfo(id);
   const episodes = info.episodes || info.seasons?.flatMap((s) => s.episodes) || [];
   return {
     id: info.id || id,
     title: info.title,
     image: info.image || info.cover,
     source: provider,
-    sourceName: cfg.name,
+    sourceName: p.cfg.name,
     description: info.description || '',
     episodes: episodes.map((ep, i) => ({
       id: ep.id || String(i + 1),
@@ -138,7 +178,7 @@ export async function getMovieStreamInfo(provider, id) {
 export async function getMovieStreamEpisode(provider, episodeId) {
   const p = getProvider(MOVIE_PROVIDERS, provider);
   if (!p) throw new Error('Unknown provider');
-  const data = await p.fetchEpisodeSources(episodeId);
+  const data = await p.instance.fetchEpisodeSources(episodeId);
   return {
     sources: (data.sources || []).map((s) => ({
       url: s.url,
@@ -146,6 +186,20 @@ export async function getMovieStreamEpisode(provider, episodeId) {
       isM3U8: s.isM3U8,
     })),
     subtitles: data.subtitles || [],
-    download: data.download || null,
+    download: data.download || data.sources?.[0]?.url || null,
   };
 }
+
+export async function getMovieStreamEpisodeFallback(episodeId, providers = MOVIE_ORDER) {
+  for (const provider of providers) {
+    try {
+      const data = await getMovieStreamEpisode(provider, episodeId);
+      if (data.sources?.length) return { ...data, provider };
+    } catch {
+      // try next
+    }
+  }
+  throw new Error('No streaming source available.');
+}
+
+export { ANIME_ORDER, MOVIE_ORDER };

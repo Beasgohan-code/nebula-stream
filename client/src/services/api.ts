@@ -10,6 +10,11 @@ export async function fetchTrending(mode: string, limit = 20) {
   return res.json()
 }
 
+export async function fetchDiscover(mode: string, limit = 12) {
+  const res = await fetch(`${API}/discover?mode=${mode}&limit=${limit}`)
+  return res.json()
+}
+
 export async function searchContent(mode: string, q: string, source = 'all', limit = 24) {
   const res = await fetch(
     `${API}/search?mode=${mode}&q=${encodeURIComponent(q)}&source=${source}&limit=${limit}`

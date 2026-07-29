@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 const STREAM_SOURCES = new Set([
-  'hianime', 'animepahe', 'animekai', 'kickassanime', 'animesaturn',
-  'flixhq', 'sflix', 'dramacool', 'himovies',
+  'hianime', 'animepahe', 'animekai', 'kickassanime', 'animesaturn', 'animeunity', 'animesama',
+  'flixhq', 'sflix', 'dramacool', 'himovies', 'goku',
 ])
 
 interface MediaItem {

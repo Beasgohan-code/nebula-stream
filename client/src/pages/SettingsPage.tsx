@@ -2,9 +2,9 @@ import { motion } from 'framer-motion'
 import { Info, Globe, Zap, Shield } from 'lucide-react'
 
 const ALL_SOURCES = {
-  manga: ['MangaDex', 'MangaKakalot', 'MangaHere', 'MangaPill', 'MangaReader', 'MangaSee'],
-  anime: ['AniList', 'HiAnime', 'AnimePahe', 'AnimeKai', 'KickAssAnime', 'AnimeSaturn'],
-  series: ['AniList', 'FlixHQ', 'SFlix', 'DramaCool', 'HiMovies'],
+  manga: ['MangaDex', 'MangaKakalot', 'ComicK', 'MangaPill', 'MangaHere', 'MangaReader', 'AsuraScans', 'WeebCentral'],
+  anime: ['AniList', 'HiAnime', 'AnimePahe', 'AnimeKai', 'KickAssAnime', 'AnimeSaturn', 'AnimeUnity', 'AnimeSama'],
+  series: ['AniList', 'FlixHQ', 'SFlix', 'DramaCool', 'HiMovies', 'Goku'],
 }
 
 export default function SettingsPage() {
@@ -55,7 +55,11 @@ export default function SettingsPage() {
             <li>• Download anime/series episodes</li>
             <li>• Bookmarks & watch history</li>
             <li>• Source filtering & quick search tags</li>
-            <li>• Animated nebula UI with glow effects</li>
+            <li>• Auto-fallback across sources when one fails</li>
+            <li>• Discover random content with shuffle button</li>
+            <li>• Continue watching/reading from history</li>
+            <li>• Recent search history</li>
+            <li>• Subtitle track support in player</li>
             <li>• Mobile-responsive design</li>
           </ul>
         </motion.div>
